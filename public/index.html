@@ -1,58 +1,118 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="h-full bg-zinc-950">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Raven Pilot</title>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            boxShadow: {
+              panel: "0 16px 40px rgba(0, 0, 0, 0.28)",
+            },
+          },
+        },
+      };
+    </script>
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
     <link rel="stylesheet" href="/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js" defer></script>
+    <script src="https://unpkg.com/lucide@latest" defer></script>
   </head>
-  <body>
-    <main class="app">
-      <section class="header">
-        <div class="header-main">
-          <div class="title">Raven Pilot</div>
-          <div class="meta" id="threadId">Thread: loading…</div>
-        </div>
-
-        <form class="cwd-form" id="cwdForm">
-          <label class="cwd-label" for="cwdInput">CWD</label>
-          <div class="cwd-controls">
-            <input
-              id="cwdInput"
-              class="cwd-input"
-              type="text"
-              autocomplete="off"
-              spellcheck="false"
-              placeholder="Set working directory"
-            />
-            <button type="submit" id="cwdButton">Apply</button>
-          </div>
-        </form>
-
-        <div class="status">
-          <span class="dot" id="statusDot"></span>
-          <span id="statusText">Idle</span>
-        </div>
-      </section>
-
-      <section class="messages" id="messages" aria-live="polite">
-        <div class="empty" id="emptyState">No messages yet.</div>
-      </section>
-
-      <section class="composer">
-        <form id="composerForm">
-          <textarea id="input" placeholder="Type a message to the agent..."></textarea>
-          <div class="actions">
-            <div>
-              <div class="hint">Set the CWD from the header, then the toolkit will resolve all relative paths from there. Thinking can be collapsed, tool calls/results are grouped, and code blocks are formatted.</div>
-              <div class="error" id="error"></div>
+  <body class="overflow-hidden bg-zinc-950 text-zinc-100 antialiased">
+    <main class="mx-auto flex h-[100dvh] min-h-0 max-w-6xl flex-col px-4 py-3">
+      <header class="overflow-x-auto border-b border-white/10 pb-3">
+        <div class="flex min-w-max items-center gap-2.5">
+          <div class="flex min-w-0 items-center gap-2.5 pr-2">
+            <div class="flex h-9 w-9 items-center justify-center rounded-2xl bg-zinc-900 text-zinc-100 ring-1 ring-white/10">
+              <i data-lucide="bot" class="h-4.5 w-4.5"></i>
             </div>
-            <button type="submit" id="sendButton">Send</button>
+            <div class="flex min-w-0 items-center gap-2 text-sm">
+              <h1 class="truncate text-base font-semibold tracking-tight text-zinc-100">Raven Pilot</h1>
+              <span class="text-zinc-700">/</span>
+              <div class="flex min-w-0 items-center gap-1 text-xs text-zinc-500">
+                <i data-lucide="hash" class="h-3.5 w-3.5"></i>
+                <span id="threadId" class="truncate">-</span>
+              </div>
+            </div>
           </div>
+
+          <form id="cwdForm" class="flex min-w-[320px] flex-1 items-center gap-2">
+            <label for="cwdInput" class="sr-only">Workspace</label>
+            <div class="relative min-w-0 flex-1">
+              <i data-lucide="folder-open" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500"></i>
+              <input
+                id="cwdInput"
+                class="h-10 w-full rounded-xl border border-white/10 bg-zinc-900/80 py-2 pl-9 pr-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-zinc-400 focus:bg-zinc-900"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="Workspace"
+              />
+            </div>
+            <button
+              type="submit"
+              id="cwdButton"
+              aria-label="Apply workspace"
+              title="Apply workspace"
+              class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-zinc-900 text-zinc-100 transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <i data-lucide="check" class="h-4 w-4"></i>
+            </button>
+          </form>
+
+          <div class="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-white/10 bg-zinc-900/80 px-3 text-sm text-zinc-300">
+            <span id="statusDot" class="h-2 w-2 rounded-full bg-zinc-400"></span>
+            <i data-lucide="activity" class="h-4 w-4 text-zinc-500"></i>
+            <span id="statusText">Idle</span>
+          </div>
+
+          <button
+            type="button"
+            id="resetButton"
+            aria-label="Reset conversation"
+            title="Reset conversation"
+            class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-zinc-900 text-zinc-100 transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <i data-lucide="rotate-ccw" class="h-4 w-4"></i>
+          </button>
+        </div>
+      </header>
+
+      <section class="flex min-h-0 flex-1 flex-col pt-3">
+        <div id="messages" class="message-scroll min-h-0 flex-1 overflow-y-auto pr-1" aria-live="polite">
+          <div id="messageList" class="space-y-4 pb-4"></div>
+          <div id="emptyState" class="flex min-h-full items-center justify-center px-4 text-center text-sm text-zinc-500">
+            No messages yet.
+          </div>
+        </div>
+
+        <form id="composerForm" class="mt-3 flex items-end gap-2 border-t border-white/10 pt-3">
+          <label for="input" class="sr-only">Message</label>
+          <div class="min-w-0 flex-1">
+            <textarea
+              id="input"
+              rows="1"
+              class="max-h-36 min-h-[44px] w-full resize-none rounded-2xl border border-white/10 bg-zinc-900/80 px-4 py-3 text-sm leading-6 text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-zinc-400 focus:bg-zinc-900"
+              placeholder="Ask the agent..."
+            ></textarea>
+            <p id="error" class="min-h-[1.25rem] pt-2 text-sm text-rose-300" role="alert"></p>
+          </div>
+          <button
+            type="submit"
+            id="sendButton"
+            aria-label="Send message"
+            title="Send message"
+            class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-950 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <i data-lucide="arrow-up" class="h-4.5 w-4.5"></i>
+          </button>
         </form>
       </section>
     </main>
 
-    <script src="/app.js"></script>
+    <script src="/app.js" defer></script>
   </body>
 </html>
