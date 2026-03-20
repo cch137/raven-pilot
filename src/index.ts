@@ -17,6 +17,7 @@ import { dirTreeTool } from "./tools/dir_tree";
 import { readTextFilesTool } from "./tools/read_text_files";
 import { getImagePart, readImageFileTool } from "./tools/read_image_files";
 import { writeTextFileTool } from "./tools/write_text_file";
+import { patchTextFileTool } from "./tools/patch_text_file";
 import { deletePathTool } from "./tools/delete_path";
 
 dotenv.config();
@@ -70,6 +71,7 @@ class AgentRuntime {
       this.wrapTool(readTextFilesTool as ToolLike),
       this.wrapTool(readImageFileTool as ToolLike),
       this.wrapTool(writeTextFileTool as ToolLike),
+      this.wrapTool(patchTextFileTool as ToolLike),
       this.wrapTool(deletePathTool as ToolLike),
     ];
 
@@ -90,13 +92,23 @@ class AgentRuntime {
 
         const answerText = chunk.text ?? "";
         if (answerText) {
-          assistantMessageId ??= this.addMessage("assistant", "message", "", "Answer").id;
+          assistantMessageId ??= this.addMessage(
+            "assistant",
+            "message",
+            "",
+            "Answer",
+          ).id;
           this.appendToMessage(assistantMessageId, answerText);
         }
 
         const thinkingText = extractThinkingText(chunk);
         if (thinkingText) {
-          thinkingMessageId ??= this.addMessage("assistant", "thinking", "", "Thinking").id;
+          thinkingMessageId ??= this.addMessage(
+            "assistant",
+            "thinking",
+            "",
+            "Thinking",
+          ).id;
           this.appendToMessage(thinkingMessageId, thinkingText);
         }
       }
@@ -322,8 +334,14 @@ function extractThinkingText(chunk: AIMessageChunk): string {
     if (typeof value !== "object") return;
 
     const record = value as Record<string, unknown>;
-    const type = typeof record.type === "string" ? record.type.toLowerCase() : "";
-    const textCandidates = [record.text, record.summary, record.content, record.reasoning];
+    const type =
+      typeof record.type === "string" ? record.type.toLowerCase() : "";
+    const textCandidates = [
+      record.text,
+      record.summary,
+      record.content,
+      record.reasoning,
+    ];
 
     if (
       type.includes("reason") ||
@@ -399,7 +417,9 @@ app.get("/api/events", (c) => {
     start(controller) {
       const write = (event: StreamEvent) => {
         if (closed) return;
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
+        );
       };
 
       unsubscribe = runtime.subscribe(write);
