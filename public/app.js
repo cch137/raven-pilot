@@ -4,6 +4,12 @@ const DEFAULT_MODEL_SETTINGS = {
   verbosity: "low",
 };
 
+const COMPOSER_MIN_HEIGHT = 40;
+const COMPOSER_MAX_HEIGHT = 128;
+const CUSTOM_SELECT_MENU_MAX_HEIGHT = 256;
+const CUSTOM_SELECT_MENU_GAP = 6;
+const CUSTOM_SELECT_VIEWPORT_PADDING = 12;
+
 const state = {
   threadId: "",
   cwd: "",
@@ -30,7 +36,9 @@ const elements = {
   sendButton: document.getElementById("sendButton"),
   modelForm: document.getElementById("modelForm"),
   modelInput: document.getElementById("modelInput"),
+  reasoningEffortSelectRoot: document.getElementById("reasoningEffortSelectRoot"),
   reasoningEffortSelect: document.getElementById("reasoningEffortSelect"),
+  verbositySelectRoot: document.getElementById("verbositySelectRoot"),
   verbositySelect: document.getElementById("verbositySelect"),
   modelButton: document.getElementById("modelButton"),
   cwdForm: document.getElementById("cwdForm"),
@@ -41,10 +49,235 @@ const elements = {
 };
 
 const toastTimers = new WeakMap();
+const customSelects = new Map();
+let activeCustomSelect = null;
 
 function autoResizeInput() {
-  elements.input.style.height = "0px";
-  elements.input.style.height = `${Math.min(Math.max(elements.input.scrollHeight, 44), 144)}px`;
+  const styles = window.getComputedStyle(elements.input);
+  const borderSize =
+    Number.parseFloat(styles.borderTopWidth || "0") + Number.parseFloat(styles.borderBottomWidth || "0");
+
+  elements.input.style.height = "auto";
+  elements.input.style.height = `${Math.min(
+    Math.max(elements.input.scrollHeight + borderSize, COMPOSER_MIN_HEIGHT),
+    COMPOSER_MAX_HEIGHT,
+  )}px`;
+}
+
+function isCustomSelectActive(root) {
+  return Boolean(root && (root.dataset.open === "true" || root.contains(document.activeElement)));
+}
+
+function getCustomSelect(id) {
+  return customSelects.get(id) || null;
+}
+
+function syncCustomSelect(select) {
+  if (!select) return;
+
+  const selected =
+    select.options.find((option) => option.value === select.input.value) || select.options[0] || null;
+
+  if (!selected) return;
+
+  select.input.value = selected.value;
+  select.valueLabel.textContent = selected.label;
+  select.trigger.title = selected.label;
+
+  for (const option of select.options) {
+    const isSelected = option.value === selected.value;
+    option.element.setAttribute("aria-selected", String(isSelected));
+    option.element.tabIndex = isSelected ? 0 : -1;
+  }
+}
+
+function closeCustomSelect(select, { restoreFocus = false } = {}) {
+  if (!select || select.root.dataset.open !== "true") return;
+
+  select.root.dataset.open = "false";
+  select.trigger.setAttribute("aria-expanded", "false");
+  select.menu.hidden = true;
+
+  if (activeCustomSelect === select) {
+    activeCustomSelect = null;
+  }
+
+  if (restoreFocus) {
+    select.trigger.focus();
+  }
+}
+
+function focusCustomSelectOption(select, index) {
+  const boundedIndex = Math.max(0, Math.min(index, select.options.length - 1));
+  const target = select.options[boundedIndex];
+  if (!target) return;
+
+  for (const option of select.options) {
+    option.element.tabIndex = option === target ? 0 : -1;
+  }
+
+  target.element.focus();
+  target.element.scrollIntoView({ block: "nearest" });
+}
+
+function updateCustomSelectPlacement(select) {
+  if (!select || select.root.dataset.open !== "true") return;
+
+  const triggerRect = select.trigger.getBoundingClientRect();
+  const menuHeight = Math.min(select.menu.scrollHeight, CUSTOM_SELECT_MENU_MAX_HEIGHT);
+  const spaceAbove = Math.max(triggerRect.top - CUSTOM_SELECT_VIEWPORT_PADDING - CUSTOM_SELECT_MENU_GAP, 0);
+  const spaceBelow = Math.max(
+    window.innerHeight - triggerRect.bottom - CUSTOM_SELECT_VIEWPORT_PADDING - CUSTOM_SELECT_MENU_GAP,
+    0,
+  );
+  const shouldOpenUpward =
+    spaceBelow < menuHeight && (spaceAbove >= menuHeight || spaceAbove > spaceBelow);
+  const availableHeight = shouldOpenUpward ? spaceAbove : spaceBelow;
+
+  select.root.dataset.placement = shouldOpenUpward ? "top" : "bottom";
+  select.menu.style.maxHeight = `${Math.min(availableHeight > 0 ? availableHeight : menuHeight, CUSTOM_SELECT_MENU_MAX_HEIGHT)}px`;
+}
+
+function openCustomSelect(select, { focusSelected = false } = {}) {
+  if (!select) return;
+
+  if (activeCustomSelect && activeCustomSelect !== select) {
+    closeCustomSelect(activeCustomSelect);
+  }
+
+  syncCustomSelect(select);
+  select.root.dataset.open = "true";
+  select.trigger.setAttribute("aria-expanded", "true");
+  select.menu.hidden = false;
+  activeCustomSelect = select;
+  updateCustomSelectPlacement(select);
+
+  if (focusSelected) {
+    const selectedIndex = select.options.findIndex((option) => option.value === select.input.value);
+    requestAnimationFrame(() => focusCustomSelectOption(select, selectedIndex === -1 ? 0 : selectedIndex));
+  }
+}
+
+function setCustomSelectValue(select, value, { dispatch = true, restoreFocus = false } = {}) {
+  if (!select) return;
+
+  const option = select.options.find((item) => item.value === value);
+  if (!option) return;
+
+  select.input.value = option.value;
+  syncCustomSelect(select);
+  closeCustomSelect(select, { restoreFocus });
+
+  if (dispatch) {
+    select.input.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+}
+
+function syncCustomSelectValue(id, value) {
+  const select = getCustomSelect(id);
+  if (!select) return;
+
+  select.input.value = value;
+  syncCustomSelect(select);
+}
+
+function initializeCustomSelect(root) {
+  if (!root) return;
+
+  const input = root.querySelector('input[type="hidden"]');
+  const trigger = root.querySelector("[data-select-trigger]");
+  const valueLabel = root.querySelector("[data-select-value]");
+  const menu = root.querySelector("[data-select-menu]");
+  const options = [...root.querySelectorAll("[data-select-option]")].map((element) => ({
+    element,
+    value: element.dataset.value || "",
+    label: element.textContent.trim(),
+  }));
+
+  if (!input || !trigger || !valueLabel || !menu || options.length === 0) return;
+
+  const select = { root, input, trigger, valueLabel, menu, options };
+  customSelects.set(input.id, select);
+
+  trigger.addEventListener("click", () => {
+    if (root.dataset.open === "true") {
+      closeCustomSelect(select);
+      return;
+    }
+
+    openCustomSelect(select);
+  });
+
+  trigger.addEventListener("keydown", (event) => {
+    switch (event.key) {
+      case "ArrowDown":
+        event.preventDefault();
+        openCustomSelect(select, { focusSelected: true });
+        break;
+      case "ArrowUp":
+        event.preventDefault();
+        openCustomSelect(select, { focusSelected: true });
+        requestAnimationFrame(() => focusCustomSelectOption(select, select.options.length - 1));
+        break;
+      case "Enter":
+      case " ":
+        event.preventDefault();
+        if (root.dataset.open === "true") closeCustomSelect(select);
+        else openCustomSelect(select, { focusSelected: true });
+        break;
+      case "Escape":
+        if (root.dataset.open === "true") {
+          event.preventDefault();
+          closeCustomSelect(select, { restoreFocus: true });
+        }
+        break;
+    }
+  });
+
+  options.forEach((option, index) => {
+    option.element.setAttribute("role", "option");
+
+    option.element.addEventListener("click", () => {
+      setCustomSelectValue(select, option.value, { restoreFocus: true });
+    });
+
+    option.element.addEventListener("keydown", (event) => {
+      switch (event.key) {
+        case "ArrowDown":
+          event.preventDefault();
+          focusCustomSelectOption(select, index + 1);
+          break;
+        case "ArrowUp":
+          event.preventDefault();
+          focusCustomSelectOption(select, index - 1);
+          break;
+        case "Home":
+          event.preventDefault();
+          focusCustomSelectOption(select, 0);
+          break;
+        case "End":
+          event.preventDefault();
+          focusCustomSelectOption(select, select.options.length - 1);
+          break;
+        case "Enter":
+        case " ":
+          event.preventDefault();
+          setCustomSelectValue(select, option.value, { restoreFocus: true });
+          break;
+        case "Escape":
+          event.preventDefault();
+          closeCustomSelect(select, { restoreFocus: true });
+          break;
+        case "Tab":
+          closeCustomSelect(select);
+          break;
+      }
+    });
+  });
+
+  root.dataset.open = "false";
+  root.dataset.placement = "bottom";
+  syncCustomSelect(select);
 }
 
 function normalizeModelSettings(settings = {}) {
@@ -83,8 +316,8 @@ function sameModelSettings(left, right) {
 function isEditingModelSettings() {
   return (
     document.activeElement === elements.modelInput ||
-    document.activeElement === elements.reasoningEffortSelect ||
-    document.activeElement === elements.verbositySelect
+    isCustomSelectActive(elements.reasoningEffortSelectRoot) ||
+    isCustomSelectActive(elements.verbositySelectRoot)
   );
 }
 
@@ -572,9 +805,14 @@ function render() {
 
   if (!isEditingModelSettings()) {
     elements.modelInput.value = state.modelSettings.model || "";
-    elements.reasoningEffortSelect.value =
-      state.modelSettings.reasoningEffort || DEFAULT_MODEL_SETTINGS.reasoningEffort;
-    elements.verbositySelect.value = state.modelSettings.verbosity || DEFAULT_MODEL_SETTINGS.verbosity;
+    syncCustomSelectValue(
+      "reasoningEffortSelect",
+      state.modelSettings.reasoningEffort || DEFAULT_MODEL_SETTINGS.reasoningEffort,
+    );
+    syncCustomSelectValue(
+      "verbositySelect",
+      state.modelSettings.verbosity || DEFAULT_MODEL_SETTINGS.verbosity,
+    );
   }
 
   if (document.activeElement !== elements.cwdInput) {
@@ -724,6 +962,43 @@ function connectEvents() {
     setTimeout(connectEvents, 1000);
   };
 }
+
+initializeCustomSelect(elements.reasoningEffortSelectRoot);
+initializeCustomSelect(elements.verbositySelectRoot);
+
+document.addEventListener("pointerdown", (event) => {
+  if (!activeCustomSelect) return;
+  if (!(event.target instanceof Node)) return;
+  if (activeCustomSelect.root.contains(event.target)) return;
+
+  closeCustomSelect(activeCustomSelect);
+});
+
+document.addEventListener("focusin", (event) => {
+  if (!activeCustomSelect) return;
+  if (!(event.target instanceof Node)) return;
+  if (activeCustomSelect.root.contains(event.target)) return;
+
+  closeCustomSelect(activeCustomSelect);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && activeCustomSelect) {
+    closeCustomSelect(activeCustomSelect, { restoreFocus: true });
+  }
+});
+
+window.addEventListener("resize", () => {
+  updateCustomSelectPlacement(activeCustomSelect);
+});
+
+window.addEventListener(
+  "scroll",
+  () => {
+    updateCustomSelectPlacement(activeCustomSelect);
+  },
+  true,
+);
 
 elements.modelForm.addEventListener("submit", async (event) => {
   event.preventDefault();
