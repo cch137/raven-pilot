@@ -3,13 +3,7 @@ import type { ToolkitTool } from "../types";
 import type { FilesystemContext } from "../types";
 import { ReadTextFilesInputSchema } from "./schemas";
 import { stringifyError } from "../../utils/errors";
-
-type ReadTextFileResult = {
-  filepath: string;
-  content?: string;
-  numberedContent?: string;
-  error?: string;
-};
+import { codeBlock } from "./helpers";
 
 function formatNumberedContent(content: string) {
   const lines = content.split("\n");
@@ -22,31 +16,28 @@ function formatNumberedContent(content: string) {
     .join("\n");
 }
 
-export function createReadTextFilesTool(context: FilesystemContext): ToolkitTool {
+export function createReadTextFilesTool(
+  context: FilesystemContext,
+): ToolkitTool {
   async function readTextFiles(filepaths: string[], showLineNumbers = false) {
-    return {
-      files: await Promise.all(
-        filepaths.map(async (filepath): Promise<ReadTextFileResult> => {
+    return (
+      await Promise.all(
+        filepaths.map(async (filepath) => {
           try {
             const resolved = context.resolveUserPath(filepath);
-            const content = new TextDecoder().decode(await fs.readFile(resolved));
-
-            return {
+            const content = new TextDecoder().decode(
+              await fs.readFile(resolved),
+            );
+            return codeBlock(
+              showLineNumbers ? formatNumberedContent(content) : content,
               filepath,
-              content,
-              ...(showLineNumbers
-                ? { numberedContent: formatNumberedContent(content) }
-                : {}),
-            };
+            );
           } catch (error) {
-            return {
-              filepath,
-              error: stringifyError(error),
-            };
+            return codeBlock(stringifyError(error), filepath);
           }
         }),
-      ),
-    };
+      )
+    ).join("\n\n");
   }
 
   return {
@@ -54,7 +45,8 @@ export function createReadTextFilesTool(context: FilesystemContext): ToolkitTool
     description: "批量讀取文字檔案，可選擇回傳帶行號的 numberedContent 視圖",
     schema: ReadTextFilesInputSchema,
     invoke: async (input) => {
-      const { filepaths, showLineNumbers } = ReadTextFilesInputSchema.parse(input);
+      const { filepaths, showLineNumbers } =
+        ReadTextFilesInputSchema.parse(input);
       return readTextFiles(filepaths, showLineNumbers);
     },
   };

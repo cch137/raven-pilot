@@ -2,11 +2,7 @@ import { readFileSync } from "fs";
 import fs from "fs/promises";
 import path, { extname } from "path";
 import ignore, { type Ignore } from "ignore";
-import {
-  applyPatch,
-  type ApplyPatchOptions,
-  type StructuredPatch,
-} from "diff";
+import { applyPatch, type ApplyPatchOptions, type StructuredPatch } from "diff";
 import {
   DEFAULT_IGNORE_PATTERNS,
   MAX_COMMAND_OUTPUT_CHARS,
@@ -16,7 +12,7 @@ import {
 } from "./constants";
 
 export function codeBlock(content: string, filepath?: string) {
-  let block = `\`\`\`\n${content}\`\`\``;
+  let block = `\`\`\`\n${content}\n\`\`\``;
   if (filepath) block = `${filepath}\n${block}`;
   return block;
 }
@@ -115,7 +111,11 @@ export function scorePatchTarget(target: string, candidate: string) {
   const normalizedTarget = normalizePatchPath(target);
   const normalizedCandidate = normalizePatchPath(candidate);
 
-  if (!normalizedTarget || !normalizedCandidate || normalizedTarget === "/dev/null") {
+  if (
+    !normalizedTarget ||
+    !normalizedCandidate ||
+    normalizedTarget === "/dev/null"
+  ) {
     return 0;
   }
 
@@ -139,7 +139,9 @@ export function scorePatchTarget(target: string, candidate: string) {
 }
 
 export function describePatchTarget(patch: StructuredPatch) {
-  return patch.newFileName || patch.oldFileName || patch.index || "(unknown target)";
+  return (
+    patch.newFileName || patch.oldFileName || patch.index || "(unknown target)"
+  );
 }
 
 export function pickPatchForFile(
@@ -159,9 +161,11 @@ export function pickPatchForFile(
 
   const scored = patches
     .map((patch) => {
-      const targets = [patch.oldFileName, patch.newFileName, patch.index].filter(
-        (value): value is string => Boolean(value),
-      );
+      const targets = [
+        patch.oldFileName,
+        patch.newFileName,
+        patch.index,
+      ].filter((value): value is string => Boolean(value));
 
       const score = targets.reduce((best, target) => {
         return Math.max(
@@ -201,7 +205,10 @@ export function normalizeUnifiedPatch(patch: string) {
   return lines.join("\n");
 }
 
-export function tryApplyPatchWithFallbacks(source: string, patch: StructuredPatch) {
+export function tryApplyPatchWithFallbacks(
+  source: string,
+  patch: StructuredPatch,
+) {
   const attempts: Array<{ label: string; options: ApplyPatchOptions }> = [
     {
       label: "strict",
@@ -237,13 +244,18 @@ export function tryApplyPatchWithFallbacks(source: string, patch: StructuredPatc
   return null;
 }
 
-export function normalizeCommandOutput(value: string | Buffer | null | undefined) {
+export function normalizeCommandOutput(
+  value: string | Buffer | null | undefined,
+) {
   if (typeof value === "string") return value;
   if (Buffer.isBuffer(value)) return value.toString("utf-8");
   return "";
 }
 
-export function truncateCommandOutput(value: string, limit = MAX_COMMAND_OUTPUT_CHARS) {
+export function truncateCommandOutput(
+  value: string,
+  limit = MAX_COMMAND_OUTPUT_CHARS,
+) {
   if (value.length <= limit) {
     return { content: value, truncated: false };
   }
@@ -254,7 +266,11 @@ export function truncateCommandOutput(value: string, limit = MAX_COMMAND_OUTPUT_
   };
 }
 
-export function formatCommandOutput(label: string, value: string, truncated: boolean) {
+export function formatCommandOutput(
+  label: string,
+  value: string,
+  truncated: boolean,
+) {
   const suffix = truncated ? " (truncated)" : "";
 
   if (!value) return `${label}${suffix}: [empty]`;
@@ -284,7 +300,8 @@ export function formatCommandResult(result: {
     `CWD: ${result.cwd}`,
   ];
 
-  if (result.exitCode !== undefined && result.exitCode !== null) lines.push(`Exit code: ${result.exitCode}`);
+  if (result.exitCode !== undefined && result.exitCode !== null)
+    lines.push(`Exit code: ${result.exitCode}`);
   if (result.signal) lines.push(`Signal: ${result.signal}`);
   if (result.errorMessage) lines.push(`Error: ${result.errorMessage}`);
   lines.push(formatCommandOutput("stdout", stdout.content, stdout.truncated));
