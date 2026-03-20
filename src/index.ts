@@ -19,6 +19,22 @@ import { resolvePathFromBase } from "./utils/paths";
 
 dotenv.config();
 
+const AGENT_SYSTEM_PROMPT_URL = new URL(
+  "./prompts/agent-system.md",
+  import.meta.url,
+);
+let agentSystemPromptPromise: Promise<string> | null = null;
+
+async function getAgentSystemPrompt() {
+  if (!agentSystemPromptPromise) {
+    agentSystemPromptPromise = fs
+      .readFile(AGENT_SYSTEM_PROMPT_URL, "utf-8")
+      .then((content) => content.trim());
+  }
+
+  return agentSystemPromptPromise;
+}
+
 type ConversationRole = "user" | "assistant" | "system" | "tool";
 type MessageKind = "message" | "thinking" | "tool-call" | "tool-result";
 
@@ -60,6 +76,7 @@ class AgentRuntime {
   private threadId = crypto.randomUUID();
   private messages: ConversationMessage[] = [];
   private queueRunning = false;
+  private threadInitialized = false;
   private CWD = process.cwd();
 
   subscribe(listener: (event: StreamEvent) => void) {
@@ -113,6 +130,7 @@ class AgentRuntime {
     this.processing = false;
     this.threadId = crypto.randomUUID();
     this.messages = [];
+    this.threadInitialized = false;
     this.broadcast({ type: "conversation-reset", data: this.snapshot() });
     this.addMessage("system", "message", "New conversation started.", "System");
     this.broadcast({ type: "processing", data: { processing: false } });
@@ -249,14 +267,21 @@ class AgentRuntime {
   }
 
   private async processUserMessage(input: string, cwd: string) {
+    const includeAgentSystemPrompt = !this.threadInitialized;
+
     this.addMessage("user", "message", input, "User");
     this.setProcessing(true);
 
     try {
       const graph = this.getGraph(cwd);
+      const systemMessages = includeAgentSystemPrompt
+        ? [{ role: "system" as const, content: await getAgentSystemPrompt() }]
+        : [];
+
       const stream = await graph.stream(
         {
           messages: [
+            ...systemMessages,
             {
               role: "system",
               content:
@@ -277,6 +302,8 @@ class AgentRuntime {
       for await (const [_subgraphs, _mode, _chunk] of stream) {
         // consume the stream to drive incremental updates
       }
+
+      this.threadInitialized = true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.addMessage("system", "message", `Error: ${message}`, "System");

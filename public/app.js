@@ -675,6 +675,12 @@ elements.resetButton.addEventListener("click", async () => {
 
 elements.form.addEventListener("submit", async (event) => {
   event.preventDefault();
+
+  if (state.processing) {
+    syncControls();
+    return;
+  }
+
   const text = elements.input.value.trim();
   if (!text) return;
 
@@ -695,6 +701,7 @@ elements.form.addEventListener("submit", async (event) => {
 elements.input.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
+    if (state.processing) return;
     elements.form.requestSubmit();
   }
 });
