@@ -8,6 +8,7 @@ const state = {
 const ui = {
   expandedPanels: new Set(),
   expandedToolGroups: new Set(),
+  connectionLost: false,
 };
 
 const elements = {
@@ -24,8 +25,15 @@ const elements = {
   cwdInput: document.getElementById("cwdInput"),
   cwdButton: document.getElementById("cwdButton"),
   resetButton: document.getElementById("resetButton"),
-  error: document.getElementById("error"),
+  toastStack: document.getElementById("toastStack"),
 };
+
+const toastTimers = new WeakMap();
+
+function autoResizeInput() {
+  elements.input.style.height = "0px";
+  elements.input.style.height = `${Math.min(Math.max(elements.input.scrollHeight, 44), 144)}px`;
+}
 
 function applySnapshot(snapshot) {
   state.threadId = snapshot.threadId || "";
@@ -73,6 +81,118 @@ function renderMarkdown(content) {
 
 function icon(name, classes = "h-4 w-4") {
   return `<i data-lucide="${name}" class="${classes}" aria-hidden="true"></i>`;
+}
+
+function toastTone(type = "info") {
+  switch (type) {
+    case "success":
+      return {
+        icon: "check",
+        title: "Success",
+        wrapperClass: "border-emerald-500/25 bg-zinc-900/95",
+        iconClass: "bg-emerald-500/15 text-emerald-200 ring-1 ring-emerald-400/20",
+      };
+    case "warning":
+      return {
+        icon: "triangle-alert",
+        title: "Warning",
+        wrapperClass: "border-amber-500/25 bg-zinc-900/95",
+        iconClass: "bg-amber-500/15 text-amber-200 ring-1 ring-amber-400/20",
+      };
+    case "error":
+      return {
+        icon: "circle-alert",
+        title: "Error",
+        wrapperClass: "border-rose-500/25 bg-zinc-900/95",
+        iconClass: "bg-rose-500/15 text-rose-200 ring-1 ring-rose-400/20",
+      };
+    default:
+      return {
+        icon: "info",
+        title: "Notice",
+        wrapperClass: "border-white/10 bg-zinc-900/95",
+        iconClass: "bg-zinc-800 text-zinc-200 ring-1 ring-white/10",
+      };
+  }
+}
+
+function dismissToast(toast) {
+  if (!toast || toast.dataset.closing === "true") return;
+
+  toast.dataset.closing = "true";
+
+  const timer = toastTimers.get(toast);
+  if (timer) clearTimeout(timer);
+
+  toast.classList.remove("opacity-100", "translate-y-0", "scale-100");
+  toast.classList.add("opacity-0", "translate-y-2", "scale-[0.98]");
+
+  const removeToast = () => toast.remove();
+  toast.addEventListener("transitionend", removeToast, { once: true });
+  setTimeout(removeToast, 220);
+}
+
+function showToast(message, { type = "info", title, duration } = {}) {
+  const text = String(message ?? "").trim();
+  if (!text || !elements.toastStack) return;
+
+  const tone = toastTone(type);
+  const timeout =
+    typeof duration === "number" ? duration : type === "error" || type === "warning" ? 5200 : 2800;
+
+  if (elements.toastStack.childElementCount >= 4) {
+    elements.toastStack.firstElementChild?.remove();
+  }
+
+  const toast = document.createElement("section");
+  toast.className = `pointer-events-auto overflow-hidden rounded-2xl border ${tone.wrapperClass} shadow-panel backdrop-blur transition-all duration-200 ease-out opacity-0 translate-y-2 scale-[0.98]`;
+  toast.setAttribute("role", type === "error" || type === "warning" ? "alert" : "status");
+
+  const body = document.createElement("div");
+  body.className = "flex items-start gap-3 px-4 py-3.5";
+
+  const iconWrap = document.createElement("div");
+  iconWrap.className = `mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${tone.iconClass}`;
+  iconWrap.innerHTML = icon(tone.icon, "h-4 w-4");
+
+  const copy = document.createElement("div");
+  copy.className = "min-w-0 flex-1";
+
+  const titleElement = document.createElement("p");
+  titleElement.className = "text-sm font-medium text-zinc-50";
+  titleElement.textContent = title || tone.title;
+
+  const messageElement = document.createElement("p");
+  messageElement.className = "mt-1 text-sm leading-6 text-zinc-300";
+  messageElement.textContent = text;
+
+  copy.append(titleElement, messageElement);
+
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = "-mr-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-zinc-500 transition hover:bg-white/5 hover:text-zinc-200";
+  closeButton.setAttribute("aria-label", "Dismiss notification");
+  closeButton.innerHTML = icon("x", "h-4 w-4");
+  closeButton.addEventListener("click", () => dismissToast(toast));
+
+  body.append(iconWrap, copy, closeButton);
+  toast.append(body);
+  elements.toastStack.append(toast);
+
+  requestAnimationFrame(() => {
+    toast.classList.remove("opacity-0", "translate-y-2", "scale-[0.98]");
+    toast.classList.add("opacity-100", "translate-y-0", "scale-100");
+  });
+
+  if (timeout > 0) {
+    toastTimers.set(toast, setTimeout(() => dismissToast(toast), timeout));
+  }
+
+  refreshIcons();
+}
+
+function showErrorToast(error, title) {
+  showToast(error?.message || String(error), { type: "error", title });
 }
 
 function timeLabel(value) {
@@ -143,19 +263,14 @@ function messageIcon(message) {
   }
 }
 
-function messageTone(message) {
-  if (message.role === "user") return "bg-zinc-800/80";
-  if (message.role === "system") return "bg-zinc-900/65";
-  return "bg-zinc-950/45";
-}
-
 function isCollapsibleMessage(message) {
   return ["thinking", "tool-call", "tool-result"].includes(message.kind);
 }
 
 function createBadge(text) {
   const badge = document.createElement("span");
-  badge.className = "inline-flex items-center rounded-full border border-white/10 bg-zinc-800/90 px-2 py-0.5 text-xs uppercase tracking-wider text-zinc-400";
+  badge.className =
+    "inline-flex items-center rounded-full border border-white/10 bg-zinc-800/80 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-400";
   badge.textContent = text;
   return badge;
 }
@@ -163,8 +278,8 @@ function createBadge(text) {
 function createMarkdownBody(content, compact = false) {
   const body = document.createElement("div");
   body.className = compact
-    ? "markdown-body prose prose-invert prose-zinc max-w-none text-sm"
-    : "markdown-body prose prose-invert prose-zinc max-w-none text-sm";
+    ? "markdown-body prose prose-invert prose-zinc max-w-none text-sm leading-6"
+    : "markdown-body prose prose-invert prose-zinc max-w-none text-sm leading-6";
   body.innerHTML = renderMarkdown(content);
   return body;
 }
@@ -187,23 +302,22 @@ function createSummary({
 }) {
   const summary = document.createElement("summary");
   summary.className = compact
-    ? "flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-3"
-    : "flex cursor-pointer list-none items-start justify-between gap-3 px-4 py-4";
+    ? "flex cursor-pointer list-none items-center justify-between gap-3 px-2.5 py-2.5"
+    : "flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5";
 
   const left = document.createElement("div");
-  left.className = "flex min-w-0 items-start gap-3";
+  left.className = "flex min-w-0 items-center gap-2.5";
 
   const iconWrap = document.createElement("span");
-  iconWrap.className = compact
-    ? "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-zinc-800/90 text-zinc-200"
-    : "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-zinc-800/90 text-zinc-200";
+  iconWrap.className =
+    "flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-zinc-800/70 text-zinc-300 ring-1 ring-white/10";
   iconWrap.innerHTML = icon(iconName, "h-4 w-4");
 
   const textWrap = document.createElement("div");
   textWrap.className = "min-w-0";
 
   const titleRow = document.createElement("div");
-  titleRow.className = "flex flex-wrap items-center gap-2";
+  titleRow.className = "flex flex-wrap items-center gap-1.5";
 
   const title = document.createElement("p");
   title.className = "text-sm font-medium text-zinc-100";
@@ -218,7 +332,7 @@ function createSummary({
 
   if (metaText) {
     const meta = document.createElement("p");
-    meta.className = "mt-1 text-xs text-zinc-500";
+    meta.className = "mt-0.5 text-[11px] text-zinc-500";
     meta.textContent = metaText;
     textWrap.append(meta);
   }
@@ -226,7 +340,7 @@ function createSummary({
   left.append(iconWrap, textWrap);
 
   const right = document.createElement("div");
-  right.className = "flex shrink-0 items-center gap-3 pl-2 text-xs text-zinc-500";
+  right.className = "flex shrink-0 items-center gap-2 pl-2 text-[11px] text-zinc-500";
 
   if (timeText) {
     const time = document.createElement("time");
@@ -244,47 +358,51 @@ function createSummary({
 }
 
 function renderStandardMessage(message) {
+  const isUser = message.role === "user";
+  const isSystem = message.role === "system";
+
   const article = document.createElement("article");
-  article.className = `rounded-2xl border border-white/10 ${messageTone(message)} p-4 shadow-sm shadow-black/10`;
+  article.className = isUser
+    ? "ml-auto w-full max-w-[min(100%,42rem)]"
+    : "w-full max-w-[min(100%,48rem)]";
 
-  const header = document.createElement("div");
-  header.className = "mb-3 flex items-start justify-between gap-3";
+  const meta = document.createElement("div");
+  meta.className = isUser
+    ? "mb-1.5 flex items-center justify-end gap-2 px-1 text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500"
+    : "mb-1.5 flex items-center gap-2 px-1 text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500";
 
-  const left = document.createElement("div");
-  left.className = "flex min-w-0 items-start gap-3";
+  const label = document.createElement("span");
+  label.textContent = messageLabel(message);
+  meta.append(label);
 
-  const iconWrap = document.createElement("span");
-  iconWrap.className = "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-zinc-800/90 text-zinc-200";
-  iconWrap.innerHTML = icon(messageIcon(message));
+  const timeText = timeLabel(message.createdAt);
+  if (timeText) {
+    const divider = document.createElement("span");
+    divider.className = "text-zinc-700";
+    divider.textContent = "•";
 
-  const textWrap = document.createElement("div");
-  textWrap.className = "min-w-0";
+    const time = document.createElement("time");
+    time.textContent = timeText;
+    meta.append(divider, time);
+  }
 
-  const titleRow = document.createElement("div");
-  titleRow.className = "flex flex-wrap items-center gap-2";
+  const shell = document.createElement("div");
+  shell.className = isUser
+    ? "rounded-2xl bg-zinc-900/90 px-4 py-3 ring-1 ring-white/10"
+    : isSystem
+      ? "rounded-xl bg-zinc-900/65 px-3 py-2.5 ring-1 ring-white/10"
+      : "px-1";
 
-  const title = document.createElement("p");
-  title.className = "text-sm font-medium text-zinc-100";
-  title.textContent = messageLabel(message);
-
-  titleRow.append(title, createBadge(kindLabel(message)));
-  textWrap.append(titleRow);
-  left.append(iconWrap, textWrap);
-
-  const time = document.createElement("time");
-  time.className = "shrink-0 text-xs text-zinc-500";
-  time.textContent = timeLabel(message.createdAt);
-
-  header.append(left, time);
-  article.append(header, createMarkdownBody(message.content));
+  shell.append(createMarkdownBody(message.content));
+  article.append(meta, shell);
   return article;
 }
 
 function renderCollapsibleMessage(message, { compact = false } = {}) {
   const article = document.createElement("article");
   article.className = compact
-    ? "rounded-xl border border-white/10 bg-zinc-950/55"
-    : `rounded-2xl border border-white/10 ${message.kind === "thinking" ? "border-dashed bg-zinc-900/55" : "bg-zinc-950/45"} shadow-sm shadow-black/10`;
+    ? "rounded-xl bg-zinc-900/30 ring-1 ring-white/5"
+    : "w-full max-w-[min(100%,48rem)] rounded-xl bg-zinc-900/30 ring-1 ring-white/5";
 
   const details = document.createElement("details");
   details.className = "group";
@@ -302,8 +420,8 @@ function renderCollapsibleMessage(message, { compact = false } = {}) {
 
   const body = document.createElement("div");
   body.className = compact
-    ? "border-t border-white/10 px-3 py-3"
-    : "border-t border-white/10 px-4 py-4";
+    ? "border-t border-white/10 px-2.5 py-2.5"
+    : "border-t border-white/10 px-3 py-3";
   body.append(createMarkdownBody(message.content, compact));
 
   details.append(body);
@@ -317,7 +435,7 @@ function renderToolGroup(messages) {
   const result = messages.find((message) => message.kind === "tool-result");
 
   const wrapper = document.createElement("section");
-  wrapper.className = "rounded-2xl border border-white/10 bg-zinc-950/40 shadow-sm shadow-black/10";
+  wrapper.className = "w-full max-w-[min(100%,48rem)] rounded-xl bg-zinc-900/30 ring-1 ring-white/5";
 
   const details = document.createElement("details");
   details.className = "group";
@@ -334,7 +452,7 @@ function renderToolGroup(messages) {
   );
 
   const body = document.createElement("div");
-  body.className = "space-y-3 border-t border-white/10 px-4 py-4";
+  body.className = "space-y-2 border-t border-white/10 px-3 py-3";
   for (const message of messages) {
     body.append(renderCollapsibleMessage(message, { compact: true }));
   }
@@ -487,6 +605,11 @@ function connectEvents() {
   source.onmessage = (event) => {
     const payload = JSON.parse(event.data);
 
+    if (ui.connectionLost) {
+      ui.connectionLost = false;
+      showToast("Live updates restored.", { type: "success", title: "Reconnected", duration: 2200 });
+    }
+
     switch (payload.type) {
       case "snapshot":
       case "conversation-reset":
@@ -507,6 +630,11 @@ function connectEvents() {
   source.onerror = async () => {
     source.close();
 
+    if (!ui.connectionLost) {
+      ui.connectionLost = true;
+      showToast("Connection lost. Reconnecting…", { type: "warning", title: "Offline" });
+    }
+
     try {
       await loadSnapshot();
     } catch {}
@@ -520,26 +648,26 @@ elements.cwdForm.addEventListener("submit", async (event) => {
   const cwd = elements.cwdInput.value.trim();
   if (!cwd) return;
 
-  elements.error.textContent = "";
   elements.cwdButton.disabled = true;
 
   try {
     await updateCWD(cwd);
+    showToast("Workspace updated.", { type: "success", title: "Ready", duration: 2200 });
   } catch (error) {
-    elements.error.textContent = error.message || String(error);
+    showErrorToast(error, "Workspace update failed");
   } finally {
     syncControls();
   }
 });
 
 elements.resetButton.addEventListener("click", async () => {
-  elements.error.textContent = "";
   elements.resetButton.disabled = true;
 
   try {
     await resetConversation();
+    showToast("Conversation reset.", { type: "success", title: "Done", duration: 2200 });
   } catch (error) {
-    elements.error.textContent = error.message || String(error);
+    showErrorToast(error, "Reset failed");
   } finally {
     syncControls();
   }
@@ -550,14 +678,14 @@ elements.form.addEventListener("submit", async (event) => {
   const text = elements.input.value.trim();
   if (!text) return;
 
-  elements.error.textContent = "";
   elements.sendButton.disabled = true;
 
   try {
     await sendMessage(text);
     elements.input.value = "";
+    autoResizeInput();
   } catch (error) {
-    elements.error.textContent = error.message || String(error);
+    showErrorToast(error, "Message failed");
   } finally {
     syncControls();
     elements.input.focus();
@@ -571,18 +699,23 @@ elements.input.addEventListener("keydown", (event) => {
   }
 });
 
-elements.input.addEventListener("input", syncControls);
+elements.input.addEventListener("input", () => {
+  autoResizeInput();
+  syncControls();
+});
 
 elements.cwdInput.addEventListener("input", syncControls);
 
 loadSnapshot()
   .then(() => {
+    autoResizeInput();
     refreshIcons();
     connectEvents();
     syncControls();
   })
   .catch((error) => {
-    elements.error.textContent = error.message || String(error);
+    showErrorToast(error, "Unable to load conversation");
+    autoResizeInput();
     refreshIcons();
     syncControls();
   });
