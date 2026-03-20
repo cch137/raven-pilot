@@ -55,7 +55,7 @@ type ToolLike = {
 
 class AgentRuntime {
   private readonly subscribers = new Set<(event: StreamEvent) => void>();
-  private readonly signal = { shouldExit: false, shouldReset: false };
+  private readonly signal = { shouldReset: false };
   private readonly queue: string[] = [];
   private readonly model;
   private readonly graph;
@@ -70,19 +70,6 @@ class AgentRuntime {
       this.wrapTool(readTextFilesTool as ToolLike),
       this.wrapTool(readImageFileTool as ToolLike),
       this.wrapTool(writeTextFileTool as ToolLike),
-      this.wrapTool(
-        tool(
-          async () => {
-            this.signal.shouldExit = true;
-            return "Exiting the conversation...";
-          },
-          {
-            name: "exit",
-            description: "End the conversation",
-            schema: z.object({}),
-          },
-        ) as ToolLike,
-      ),
       this.wrapTool(
         tool(
           async () => {
@@ -147,7 +134,7 @@ class AgentRuntime {
     };
 
     const shouldStop = () => {
-      return this.signal.shouldExit || this.signal.shouldReset ? "stop" : "agent";
+      return this.signal.shouldReset ? "stop" : "agent";
     };
 
     this.graph = new StateGraph(MessagesAnnotation)
@@ -239,7 +226,6 @@ class AgentRuntime {
   }
 
   private async processUserMessage(input: string) {
-    this.signal.shouldExit = false;
     this.signal.shouldReset = false;
 
     this.addMessage("user", "message", input, "User");
@@ -256,18 +242,11 @@ class AgentRuntime {
       );
 
       for await (const [_subgraphs, _mode, _chunk] of stream) {
-        if (this.signal.shouldExit || this.signal.shouldReset) break;
+        if (this.signal.shouldReset) break;
       }
 
       if (this.signal.shouldReset) {
         this.resetConversation();
-        return;
-      }
-
-      if (this.signal.shouldExit) {
-        this.addMessage("system", "message", "Conversation ended. Exiting.", "System");
-        this.setProcessing(false);
-        setTimeout(() => process.exit(0), 50);
         return;
       }
     } catch (error) {
