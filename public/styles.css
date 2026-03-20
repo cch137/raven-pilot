@@ -29,12 +29,17 @@ summary::-webkit-details-marker {
   scrollbar-gutter: stable;
 }
 
-textarea {
+textarea,
+select {
   scrollbar-width: none;
 }
 
 textarea::-webkit-scrollbar {
   display: none;
+}
+
+select {
+  color-scheme: dark;
 }
 
 .message-scroll::-webkit-scrollbar,

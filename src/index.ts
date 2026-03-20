@@ -37,6 +37,8 @@ async function getAgentSystemPrompt() {
 
 type ConversationRole = "user" | "assistant" | "system" | "tool";
 type MessageKind = "message" | "thinking" | "tool-call" | "tool-result";
+type ReasoningEffort = "minimal" | "low" | "medium" | "high";
+type Verbosity = "low" | "medium" | "high";
 
 type ConversationMessage = {
   id: string;
@@ -48,9 +50,35 @@ type ConversationMessage = {
   groupId?: string;
 };
 
+type ModelSettings = {
+  model: string;
+  reasoningEffort: ReasoningEffort;
+  verbosity: Verbosity;
+};
+
+const REASONING_EFFORT_VALUES = [
+  "minimal",
+  "low",
+  "medium",
+  "high",
+] as const satisfies readonly ReasoningEffort[];
+
+const VERBOSITY_VALUES = [
+  "low",
+  "medium",
+  "high",
+] as const satisfies readonly Verbosity[];
+
+const DEFAULT_MODEL_SETTINGS: ModelSettings = {
+  model: "gpt-5.4",
+  reasoningEffort: "high",
+  verbosity: "low",
+};
+
 type ConversationSnapshot = {
   threadId: string;
   cwd: string;
+  modelSettings: ModelSettings;
   processing: boolean;
   messages: ConversationMessage[];
 };
@@ -65,6 +93,7 @@ type StreamEvent =
 type QueueItem = {
   content: string;
   cwd: string;
+  modelSettings: ModelSettings;
 };
 
 class AgentRuntime {
@@ -78,6 +107,7 @@ class AgentRuntime {
   private queueRunning = false;
   private threadInitialized = false;
   private CWD = process.cwd();
+  private modelSettings: ModelSettings = { ...DEFAULT_MODEL_SETTINGS };
 
   subscribe(listener: (event: StreamEvent) => void) {
     this.subscribers.add(listener);
@@ -91,6 +121,7 @@ class AgentRuntime {
     return {
       threadId: this.threadId,
       cwd: this.CWD,
+      modelSettings: { ...this.modelSettings },
       processing: this.processing,
       messages: [...this.messages],
     };
@@ -111,7 +142,23 @@ class AgentRuntime {
     return resolved;
   }
 
-  async enqueueUserMessage(content: string, cwd = this.CWD) {
+  setModelSettings(nextSettings: Partial<ModelSettings>) {
+    const normalized = normalizeModelSettings(nextSettings, this.modelSettings);
+
+    if (isSameModelSettings(normalized, this.modelSettings)) {
+      return this.modelSettings;
+    }
+
+    this.modelSettings = normalized;
+    this.broadcast({ type: "snapshot", data: this.snapshot() });
+    return this.modelSettings;
+  }
+
+  async enqueueUserMessage(
+    content: string,
+    cwd = this.CWD,
+    modelSettings = this.modelSettings,
+  ) {
     const trimmed = content.trim();
     if (!trimmed) throw new Error("Message cannot be empty.");
     if (trimmed === "/reset") {
@@ -119,7 +166,11 @@ class AgentRuntime {
       return;
     }
 
-    this.queue.push({ content: trimmed, cwd });
+    this.queue.push({
+      content: trimmed,
+      cwd,
+      modelSettings: { ...modelSettings },
+    });
     this.runQueue().catch((error) => {
       console.error("Queue processing failed", error);
     });
@@ -136,16 +187,21 @@ class AgentRuntime {
     this.broadcast({ type: "processing", data: { processing: false } });
   }
 
-  private getGraph(cwd: string) {
-    const cached = this.graphs.get(cwd);
+  private getGraph(cwd: string, modelSettings: ModelSettings) {
+    const cacheKey = `${cwd}::${JSON.stringify(modelSettings)}`;
+    const cached = this.graphs.get(cacheKey);
     if (cached) return cached;
 
     const toolkit = createToolkit(cwd);
     const tools = toolkit.tools.map((toolDef) => this.wrapTool(toolDef));
-    const model = new ChatOpenAI("gpt-5.4", {
+    const model = new ChatOpenAI({
+      model: modelSettings.model,
       apiKey: process.env["OPENAI_API_KEY"],
-      reasoning: { effort: "high", summary: "detailed" },
-      verbosity: "low",
+      reasoning: {
+        effort: modelSettings.reasoningEffort,
+        summary: "detailed",
+      },
+      verbosity: modelSettings.verbosity,
     }).bindTools(tools);
 
     const callModel = async (state: typeof MessagesAnnotation.State) => {
@@ -213,7 +269,7 @@ class AgentRuntime {
       .addEdge("toolHandler", "agent")
       .compile({ checkpointer: this.checkpointer });
 
-    this.graphs.set(toolkit.cwd, graph);
+    this.graphs.set(cacheKey, graph);
     return graph;
   }
 
@@ -259,21 +315,29 @@ class AgentRuntime {
       while (this.queue.length > 0) {
         const item = this.queue.shift();
         if (!item) continue;
-        await this.processUserMessage(item.content, item.cwd);
+        await this.processUserMessage(
+          item.content,
+          item.cwd,
+          item.modelSettings,
+        );
       }
     } finally {
       this.queueRunning = false;
     }
   }
 
-  private async processUserMessage(input: string, cwd: string) {
+  private async processUserMessage(
+    input: string,
+    cwd: string,
+    modelSettings: ModelSettings,
+  ) {
     const includeAgentSystemPrompt = !this.threadInitialized;
 
     this.addMessage("user", "message", input, "User");
     this.setProcessing(true);
 
     try {
-      const graph = this.getGraph(cwd);
+      const graph = this.getGraph(cwd, modelSettings);
       const systemMessages = includeAgentSystemPrompt
         ? [{ role: "system" as const, content: await getAgentSystemPrompt() }]
         : [];
@@ -372,6 +436,53 @@ function stringifyValue(value: unknown) {
   return safePrettyJson(value);
 }
 
+function normalizeModelSettings(
+  value: Partial<ModelSettings>,
+  fallback: ModelSettings = DEFAULT_MODEL_SETTINGS,
+): ModelSettings {
+  const model =
+    typeof value.model === "string" ? value.model.trim() : fallback.model;
+
+  if (!model) {
+    throw new Error("Model name cannot be empty.");
+  }
+
+  return {
+    model,
+    reasoningEffort: parseAllowedValue(
+      "reasoning effort",
+      value.reasoningEffort,
+      REASONING_EFFORT_VALUES,
+      fallback.reasoningEffort,
+    ),
+    verbosity: parseAllowedValue(
+      "verbosity",
+      value.verbosity,
+      VERBOSITY_VALUES,
+      fallback.verbosity,
+    ),
+  };
+}
+
+function parseAllowedValue<T extends string>(
+  label: string,
+  value: string | undefined,
+  allowedValues: readonly T[],
+  fallback: T,
+): T {
+  if (value === undefined) return fallback;
+  if (allowedValues.includes(value as T)) return value as T;
+  throw new Error(`Invalid ${label}: ${value}`);
+}
+
+function isSameModelSettings(left: ModelSettings, right: ModelSettings) {
+  return (
+    left.model === right.model &&
+    left.reasoningEffort === right.reasoningEffort &&
+    left.verbosity === right.verbosity
+  );
+}
+
 function extractThinkingText(chunk: AIMessageChunk): string {
   const visited = new Set<string>();
   const parts: string[] = [];
@@ -449,7 +560,8 @@ app.post("/api/messages", async (c) => {
       await runtime.setCWD(cwd);
     }
 
-    await runtime.enqueueUserMessage(text, runtime.snapshot().cwd);
+    const snapshot = runtime.snapshot();
+    await runtime.enqueueUserMessage(text, snapshot.cwd, snapshot.modelSettings);
     return c.json({ ok: true, snapshot: runtime.snapshot() });
   } catch (error) {
     return c.json({ error: stringifyError(error) }, 400);
@@ -462,6 +574,26 @@ app.post("/api/cwd", async (c) => {
 
   try {
     await runtime.setCWD(cwd);
+    return c.json({ ok: true, snapshot: runtime.snapshot() });
+  } catch (error) {
+    return c.json({ error: stringifyError(error) }, 400);
+  }
+});
+
+app.post("/api/model", async (c) => {
+  const body = await c.req.json().catch(() => null);
+
+  try {
+    runtime.setModelSettings({
+      model: typeof body?.model === "string" ? body.model : undefined,
+      reasoningEffort:
+        typeof body?.reasoningEffort === "string"
+          ? body.reasoningEffort
+          : undefined,
+      verbosity:
+        typeof body?.verbosity === "string" ? body.verbosity : undefined,
+    });
+
     return c.json({ ok: true, snapshot: runtime.snapshot() });
   } catch (error) {
     return c.json({ error: stringifyError(error) }, 400);

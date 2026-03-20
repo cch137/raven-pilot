@@ -1,6 +1,13 @@
+const DEFAULT_MODEL_SETTINGS = {
+  model: "gpt-5.4",
+  reasoningEffort: "high",
+  verbosity: "low",
+};
+
 const state = {
   threadId: "",
   cwd: "",
+  modelSettings: { ...DEFAULT_MODEL_SETTINGS },
   processing: false,
   messages: [],
 };
@@ -21,6 +28,11 @@ const elements = {
   form: document.getElementById("composerForm"),
   input: document.getElementById("input"),
   sendButton: document.getElementById("sendButton"),
+  modelForm: document.getElementById("modelForm"),
+  modelInput: document.getElementById("modelInput"),
+  reasoningEffortSelect: document.getElementById("reasoningEffortSelect"),
+  verbositySelect: document.getElementById("verbositySelect"),
+  modelButton: document.getElementById("modelButton"),
   cwdForm: document.getElementById("cwdForm"),
   cwdInput: document.getElementById("cwdInput"),
   cwdButton: document.getElementById("cwdButton"),
@@ -35,9 +47,51 @@ function autoResizeInput() {
   elements.input.style.height = `${Math.min(Math.max(elements.input.scrollHeight, 44), 144)}px`;
 }
 
+function normalizeModelSettings(settings = {}) {
+  return {
+    model:
+      typeof settings.model === "string" && settings.model.trim()
+        ? settings.model.trim()
+        : DEFAULT_MODEL_SETTINGS.model,
+    reasoningEffort:
+      typeof settings.reasoningEffort === "string"
+        ? settings.reasoningEffort
+        : DEFAULT_MODEL_SETTINGS.reasoningEffort,
+    verbosity:
+      typeof settings.verbosity === "string"
+        ? settings.verbosity
+        : DEFAULT_MODEL_SETTINGS.verbosity,
+  };
+}
+
+function readModelSettingsForm() {
+  return normalizeModelSettings({
+    model: elements.modelInput.value,
+    reasoningEffort: elements.reasoningEffortSelect.value,
+    verbosity: elements.verbositySelect.value,
+  });
+}
+
+function sameModelSettings(left, right) {
+  return (
+    left.model === right.model &&
+    left.reasoningEffort === right.reasoningEffort &&
+    left.verbosity === right.verbosity
+  );
+}
+
+function isEditingModelSettings() {
+  return (
+    document.activeElement === elements.modelInput ||
+    document.activeElement === elements.reasoningEffortSelect ||
+    document.activeElement === elements.verbositySelect
+  );
+}
+
 function applySnapshot(snapshot) {
   state.threadId = snapshot.threadId || "";
   state.cwd = snapshot.cwd || "";
+  state.modelSettings = normalizeModelSettings(snapshot.modelSettings);
   state.processing = Boolean(snapshot.processing);
   state.messages = Array.isArray(snapshot.messages) ? snapshot.messages : [];
 }
@@ -499,9 +553,12 @@ function refreshIcons() {
 function syncControls() {
   const hasText = elements.input.value.trim().length > 0;
   const hasCwd = elements.cwdInput.value.trim().length > 0;
+  const hasModel = elements.modelInput.value.trim().length > 0;
+  const modelChanged = !sameModelSettings(readModelSettingsForm(), state.modelSettings);
 
   elements.sendButton.disabled = state.processing || !hasText;
   elements.resetButton.disabled = state.processing;
+  elements.modelButton.disabled = state.processing || !hasModel || !modelChanged;
   elements.cwdButton.disabled = state.processing || !hasCwd;
 }
 
@@ -512,6 +569,13 @@ function render() {
   elements.statusDot.classList.remove("bg-zinc-400", "bg-amber-300", "animate-pulse");
   elements.statusDot.classList.add(state.processing ? "bg-amber-300" : "bg-zinc-400");
   if (state.processing) elements.statusDot.classList.add("animate-pulse");
+
+  if (!isEditingModelSettings()) {
+    elements.modelInput.value = state.modelSettings.model || "";
+    elements.reasoningEffortSelect.value =
+      state.modelSettings.reasoningEffort || DEFAULT_MODEL_SETTINGS.reasoningEffort;
+    elements.verbositySelect.value = state.modelSettings.verbosity || DEFAULT_MODEL_SETTINGS.verbosity;
+  }
 
   if (document.activeElement !== elements.cwdInput) {
     elements.cwdInput.value = state.cwd || "";
@@ -567,6 +631,24 @@ async function updateCWD(cwd) {
     applySnapshot(body.snapshot);
     render();
     elements.cwdInput.value = state.cwd;
+  }
+}
+
+async function updateModelSettings(modelSettings) {
+  const response = await fetch("/api/model", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(modelSettings),
+  });
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(body.error || "Failed to update model settings.");
+  }
+
+  if (body.snapshot) {
+    applySnapshot(body.snapshot);
+    render();
   }
 }
 
@@ -643,6 +725,23 @@ function connectEvents() {
   };
 }
 
+elements.modelForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const modelSettings = readModelSettingsForm();
+  if (!elements.modelInput.value.trim()) return;
+
+  elements.modelButton.disabled = true;
+
+  try {
+    await updateModelSettings(modelSettings);
+    showToast("Model settings updated.", { type: "success", title: "Ready", duration: 2200 });
+  } catch (error) {
+    showErrorToast(error, "Model update failed");
+  } finally {
+    syncControls();
+  }
+});
+
 elements.cwdForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const cwd = elements.cwdInput.value.trim();
@@ -710,6 +809,12 @@ elements.input.addEventListener("input", () => {
   autoResizeInput();
   syncControls();
 });
+
+elements.modelInput.addEventListener("input", syncControls);
+
+elements.reasoningEffortSelect.addEventListener("change", syncControls);
+
+elements.verbositySelect.addEventListener("change", syncControls);
 
 elements.cwdInput.addEventListener("input", syncControls);
 

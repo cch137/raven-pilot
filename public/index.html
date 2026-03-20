@@ -40,6 +40,60 @@
               </div>
             </div>
 
+            <form id="modelForm" class="flex min-w-max items-center gap-2">
+              <div class="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-white/10 bg-zinc-900/80 px-3 text-sm text-zinc-300">
+                <i data-lucide="sliders-horizontal" class="h-4 w-4 text-zinc-500"></i>
+                <span class="text-xs font-medium uppercase tracking-[0.16em] text-zinc-400">Model</span>
+              </div>
+
+              <div class="flex h-10 min-w-[220px] items-center gap-2 rounded-xl border border-white/10 bg-zinc-900/80 px-3 text-sm text-zinc-100 transition focus-within:border-zinc-400 focus-within:bg-zinc-900">
+                <label for="modelInput" class="shrink-0 text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500">
+                  Name
+                </label>
+                <input
+                  id="modelInput"
+                  class="min-w-0 flex-1 bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="gpt-5.4"
+                />
+              </div>
+
+              <div class="flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-zinc-900/80 px-3 text-sm text-zinc-100 transition focus-within:border-zinc-400 focus-within:bg-zinc-900">
+                <label for="reasoningEffortSelect" class="shrink-0 text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500">
+                  Reasoning
+                </label>
+                <select id="reasoningEffortSelect" class="min-w-[78px] bg-transparent text-sm text-zinc-100 outline-none">
+                  <option value="minimal">Minimal</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+
+              <div class="flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-zinc-900/80 px-3 text-sm text-zinc-100 transition focus-within:border-zinc-400 focus-within:bg-zinc-900">
+                <label for="verbositySelect" class="shrink-0 text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500">
+                  Verbosity
+                </label>
+                <select id="verbositySelect" class="min-w-[72px] bg-transparent text-sm text-zinc-100 outline-none">
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+
+              <button
+                type="submit"
+                id="modelButton"
+                aria-label="Apply model settings"
+                title="Apply model settings"
+                class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-zinc-900 text-zinc-100 transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <i data-lucide="check" class="h-4 w-4"></i>
+              </button>
+            </form>
+
             <form id="cwdForm" class="flex min-w-[320px] flex-1 items-center gap-2">
               <label for="cwdInput" class="sr-only">Workspace</label>
               <div class="relative min-w-0 flex-1">
