@@ -1,20 +1,11 @@
 import fs from "fs/promises";
-import {
-  Dirent,
-  readdirSync,
-  readFileSync,
-  realpathSync,
-  statSync,
-} from "fs";
+import { Dirent, readdirSync, readFileSync, realpathSync, statSync } from "fs";
 import path, { extname } from "path";
 import ignore, { Ignore } from "ignore";
 import { applyPatch } from "diff";
 import { z } from "zod";
 import { stringifyError } from "../utils/errors";
-import {
-  normalizeDirectoryPath,
-  resolvePathFromBase,
-} from "../utils/paths";
+import { normalizeDirectoryPath, resolvePathFromBase } from "../utils/paths";
 
 export type ToolkitTool = {
   name: string;
@@ -99,10 +90,6 @@ function codeBlock(content: string, filepath?: string) {
   return block;
 }
 
-function formatDisplayPath(input: string, resolved: string) {
-  return input.trim() === resolved ? resolved : `${input} -> ${resolved}`;
-}
-
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`;
   if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)}K`;
@@ -157,8 +144,9 @@ export function createToolkit(cwd: string): Toolkit {
       const maxItems = options?.max ?? 10;
       const showSize = options?.size ?? true;
       const useGitignore = options?.ignore ?? true;
-      const builtinIgnore =
-        options?.ignorePatterns ?? [...DEFAULT_IGNORE_PATTERNS];
+      const builtinIgnore = options?.ignorePatterns ?? [
+        ...DEFAULT_IGNORE_PATTERNS,
+      ];
 
       const builtinMatcher: Ignore | null =
         builtinIgnore.length > 0 ? ignore().add(builtinIgnore) : null;
@@ -259,7 +247,10 @@ export function createToolkit(cwd: string): Toolkit {
 
       const resolved = realpathSync(resolveUserPath(dirname));
       const rootName = path.basename(resolved) || resolved;
-      const treeLines: string[] = [`${rootName}/`, ...walk(resolved, 1, "", null)];
+      const treeLines: string[] = [
+        `${rootName}/`,
+        ...walk(resolved, 1, "", null),
+      ];
 
       return treeLines.join("\n");
     } catch (error) {
@@ -273,8 +264,10 @@ export function createToolkit(cwd: string): Toolkit {
         filepaths.map(async (filepath) => {
           try {
             const resolved = resolveUserPath(filepath);
-            const content = new TextDecoder().decode(await fs.readFile(resolved));
-            return codeBlock(content, formatDisplayPath(filepath, resolved));
+            const content = new TextDecoder().decode(
+              await fs.readFile(resolved),
+            );
+            return codeBlock(content, filepath);
           } catch (error) {
             return codeBlock(stringifyError(error), filepath || undefined);
           }
