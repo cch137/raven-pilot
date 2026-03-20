@@ -18,22 +18,33 @@ export { upgradeWebSocket };
 // simple logger: :method :url :status :res[content-length] - :response-time ms
 app.use("*", createRouterLogger(log));
 
-app.use(
-  "/*",
-  serveStatic({
-    root: "./public/",
-    onFound: (_path, c) => {
-      c.header(
-        "Cache-Control",
-        "no-store, no-cache, must-revalidate, max-age=0",
-      );
-      c.header("Pragma", "no-cache");
-      c.header("Expires", "0");
-    },
-  }),
-);
+let staticRegistered = false;
 
-export const servers = (() => {
+export function registerStaticAssets() {
+  if (staticRegistered) return;
+  staticRegistered = true;
+
+  app.use(
+    "/*",
+    serveStatic({
+      root: "./public/",
+      onFound: (_path, c) => {
+        c.header(
+          "Cache-Control",
+          "no-store, no-cache, must-revalidate, max-age=0",
+        );
+        c.header("Pragma", "no-cache");
+        c.header("Expires", "0");
+      },
+    }),
+  );
+}
+
+let startedServers: ReadonlyArray<ReturnType<typeof serve>> | null = null;
+
+export function startServers() {
+  if (startedServers) return startedServers;
+
   const ports = new Set<number>();
 
   const addPort = (v?: string) => {
@@ -70,5 +81,6 @@ export const servers = (() => {
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 
-  return servers;
-})();
+  startedServers = servers;
+  return startedServers;
+}
