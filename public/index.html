@@ -9,10 +9,26 @@
   <body>
     <main class="app">
       <section class="header">
-        <div>
+        <div class="header-main">
           <div class="title">Raven Pilot</div>
           <div class="meta" id="threadId">Thread: loading…</div>
         </div>
+
+        <form class="cwd-form" id="cwdForm">
+          <label class="cwd-label" for="cwdInput">CWD</label>
+          <div class="cwd-controls">
+            <input
+              id="cwdInput"
+              class="cwd-input"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Set working directory"
+            />
+            <button type="submit" id="cwdButton">Apply</button>
+          </div>
+        </form>
+
         <div class="status">
           <span class="dot" id="statusDot"></span>
           <span id="statusText">Idle</span>
@@ -28,7 +44,7 @@
           <textarea id="input" placeholder="Type a message to the agent..."></textarea>
           <div class="actions">
             <div>
-              <div class="hint">Thinking can be collapsed, tool calls/results are grouped, and code blocks are formatted.</div>
+              <div class="hint">Set the CWD from the header, then the toolkit will resolve all relative paths from there. Thinking can be collapsed, tool calls/results are grouped, and code blocks are formatted.</div>
               <div class="error" id="error"></div>
             </div>
             <button type="submit" id="sendButton">Send</button>

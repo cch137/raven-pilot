@@ -1,3 +1,4 @@
+import fs from "fs/promises";
 import { ChatOpenAI } from "@langchain/openai";
 import {
   StateGraph,
@@ -13,12 +14,9 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import dotenv from "dotenv";
 import { app, registerStaticAssets, startServers } from "./server";
-import { dirTreeTool } from "./tools/dir_tree";
-import { readTextFilesTool } from "./tools/read_text_files";
-import { getImagePart, readImageFileTool } from "./tools/read_image_files";
-import { writeTextFileTool } from "./tools/write_text_file";
-import { patchTextFileTool } from "./tools/patch_text_file";
-import { deletePathTool } from "./tools/delete_path";
+import { createToolkit, type ToolkitTool } from "./toolkits";
+import { stringifyError } from "./utils/errors";
+import { resolvePathFromBase } from "./utils/paths";
 
 dotenv.config();
 
@@ -37,6 +35,7 @@ type ConversationMessage = {
 
 type ConversationSnapshot = {
   threadId: string;
+  cwd: string;
   processing: boolean;
   messages: ConversationMessage[];
 };
@@ -48,41 +47,92 @@ type StreamEvent =
   | { type: "conversation-reset"; data: ConversationSnapshot }
   | { type: "processing"; data: { processing: boolean } };
 
-type ToolLike = {
-  name: string;
-  description: string;
-  schema: z.ZodTypeAny;
-  invoke: (input: unknown) => Promise<unknown>;
+type QueueItem = {
+  content: string;
+  cwd: string;
 };
 
 class AgentRuntime {
   private readonly subscribers = new Set<(event: StreamEvent) => void>();
-  private readonly queue: string[] = [];
-  private readonly model;
-  private readonly graph;
+  private readonly queue: QueueItem[] = [];
+  private readonly checkpointer = new MemorySaver();
+  private readonly graphs = new Map<string, any>();
   private processing = false;
   private threadId = crypto.randomUUID();
   private messages: ConversationMessage[] = [];
   private queueRunning = false;
+  private CWD = process.cwd();
 
-  constructor() {
-    const tools = [
-      this.wrapTool(dirTreeTool as ToolLike),
-      this.wrapTool(readTextFilesTool as ToolLike),
-      this.wrapTool(readImageFileTool as ToolLike),
-      this.wrapTool(writeTextFileTool as ToolLike),
-      this.wrapTool(patchTextFileTool as ToolLike),
-      this.wrapTool(deletePathTool as ToolLike),
-    ];
+  subscribe(listener: (event: StreamEvent) => void) {
+    this.subscribers.add(listener);
+    listener({ type: "snapshot", data: this.snapshot() });
+    return () => {
+      this.subscribers.delete(listener);
+    };
+  }
 
-    this.model = new ChatOpenAI("gpt-5.4", {
+  snapshot(): ConversationSnapshot {
+    return {
+      threadId: this.threadId,
+      cwd: this.CWD,
+      processing: this.processing,
+      messages: [...this.messages],
+    };
+  }
+
+  async setCWD(nextPath: string) {
+    const resolved = resolvePathFromBase(this.CWD, nextPath);
+    const stat = await fs.stat(resolved);
+
+    if (!stat.isDirectory()) {
+      throw new Error(`CWD must be a directory: ${resolved}`);
+    }
+
+    if (resolved === this.CWD) return resolved;
+
+    this.CWD = resolved;
+    this.broadcast({ type: "snapshot", data: this.snapshot() });
+    return resolved;
+  }
+
+  async enqueueUserMessage(content: string, cwd = this.CWD) {
+    const trimmed = content.trim();
+    if (!trimmed) throw new Error("Message cannot be empty.");
+    if (trimmed === "/reset") {
+      this.resetConversation();
+      return;
+    }
+
+    this.queue.push({ content: trimmed, cwd });
+    this.runQueue().catch((error) => {
+      console.error("Queue processing failed", error);
+    });
+  }
+
+  resetConversation() {
+    this.queue.length = 0;
+    this.processing = false;
+    this.threadId = crypto.randomUUID();
+    this.messages = [];
+    this.broadcast({ type: "conversation-reset", data: this.snapshot() });
+    this.addMessage("system", "message", "New conversation started.", "System");
+    this.broadcast({ type: "processing", data: { processing: false } });
+  }
+
+  private getGraph(cwd: string) {
+    const cached = this.graphs.get(cwd);
+    if (cached) return cached;
+
+    const toolkit = createToolkit(cwd);
+    const tools = toolkit.tools.map((toolDef) => this.wrapTool(toolDef));
+    const model = new ChatOpenAI("gpt-5.4", {
       apiKey: process.env["OPENAI_API_KEY"],
-      reasoning: { effort: "low", summary: "detailed" },
+      reasoning: { effort: "high", summary: "detailed" },
       verbosity: "low",
     }).bindTools(tools);
 
     const callModel = async (state: typeof MessagesAnnotation.State) => {
-      const stream = await this.model.stream(state.messages);
+      const stream = await model.stream(state.messages);
       let full: AIMessageChunk | null = null;
       let assistantMessageId: string | null = null;
       let thinkingMessageId: string | null = null;
@@ -122,7 +172,7 @@ class AgentRuntime {
       for (const message of state.messages) {
         if (!ToolMessage.isInstance(message)) continue;
         if (!message.id) message.id = crypto.randomUUID();
-        const part = getImagePart(message.text);
+        const part = toolkit.getImagePart(message.text);
         if (!part) continue;
         messages.push({
           role: "human",
@@ -133,7 +183,7 @@ class AgentRuntime {
       return { messages };
     };
 
-    this.graph = new StateGraph(MessagesAnnotation)
+    const graph = new StateGraph(MessagesAnnotation)
       .addNode("agent", callModel)
       .addNode("tools", new ToolNode(tools))
       .addNode("toolHandler", specialToolHandler)
@@ -144,49 +194,13 @@ class AgentRuntime {
       })
       .addEdge("tools", "toolHandler")
       .addEdge("toolHandler", "agent")
-      .compile({ checkpointer: new MemorySaver() });
+      .compile({ checkpointer: this.checkpointer });
+
+    this.graphs.set(toolkit.cwd, graph);
+    return graph;
   }
 
-  subscribe(listener: (event: StreamEvent) => void) {
-    this.subscribers.add(listener);
-    listener({ type: "snapshot", data: this.snapshot() });
-    return () => {
-      this.subscribers.delete(listener);
-    };
-  }
-
-  snapshot(): ConversationSnapshot {
-    return {
-      threadId: this.threadId,
-      processing: this.processing,
-      messages: [...this.messages],
-    };
-  }
-
-  async enqueueUserMessage(content: string) {
-    const trimmed = content.trim();
-    if (!trimmed) throw new Error("Message cannot be empty.");
-    if (trimmed === "/reset") {
-      this.resetConversation();
-      return;
-    }
-    this.queue.push(trimmed);
-    this.runQueue().catch((error) => {
-      console.error("Queue processing failed", error);
-    });
-  }
-
-  resetConversation() {
-    this.queue.length = 0;
-    this.processing = false;
-    this.threadId = crypto.randomUUID();
-    this.messages = [];
-    this.broadcast({ type: "conversation-reset", data: this.snapshot() });
-    this.addMessage("system", "message", "New conversation started.", "System");
-    this.broadcast({ type: "processing", data: { processing: false } });
-  }
-
-  private wrapTool(toolDef: ToolLike) {
+  private wrapTool(toolDef: ToolkitTool) {
     return tool(
       async (input) => {
         const groupId = crypto.randomUUID();
@@ -226,26 +240,38 @@ class AgentRuntime {
 
     try {
       while (this.queue.length > 0) {
-        const input = this.queue.shift();
-        if (!input) continue;
-        await this.processUserMessage(input);
+        const item = this.queue.shift();
+        if (!item) continue;
+        await this.processUserMessage(item.content, item.cwd);
       }
     } finally {
       this.queueRunning = false;
     }
   }
 
-  private async processUserMessage(input: string) {
+  private async processUserMessage(input: string, cwd: string) {
     this.addMessage("user", "message", input, "User");
     this.setProcessing(true);
 
     try {
-      const stream = await this.graph.stream(
-        { messages: [{ role: "user", content: input }] },
+      const graph = this.getGraph(cwd);
+      const stream = await graph.stream(
+        {
+          messages: [
+            {
+              role: "system",
+              content:
+                `Runtime working directory (CWD): ${cwd}\n` +
+                "Resolve every relative path for tool usage from this directory.",
+            },
+            { role: "user", content: input },
+          ],
+        },
         {
           configurable: { thread_id: this.threadId },
           subgraphs: true,
           streamMode: ["updates", "values"],
+          recursionLimit: 1_000_000,
         },
       );
 
@@ -386,18 +412,39 @@ app.get("/api/conversation", (c) => c.json(runtime.snapshot()));
 app.post("/api/messages", async (c) => {
   const body = await c.req.json().catch(() => null);
   const text = typeof body?.text === "string" ? body.text : "";
+  const cwd = typeof body?.cwd === "string" ? body.cwd : undefined;
 
   if (!text.trim()) {
     return c.json({ error: "Message cannot be empty." }, 400);
   }
 
-  await runtime.enqueueUserMessage(text);
-  return c.json({ ok: true });
+  try {
+    if (cwd !== undefined) {
+      await runtime.setCWD(cwd);
+    }
+
+    await runtime.enqueueUserMessage(text, runtime.snapshot().cwd);
+    return c.json({ ok: true, snapshot: runtime.snapshot() });
+  } catch (error) {
+    return c.json({ error: stringifyError(error) }, 400);
+  }
+});
+
+app.post("/api/cwd", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const cwd = typeof body?.cwd === "string" ? body.cwd : "";
+
+  try {
+    await runtime.setCWD(cwd);
+    return c.json({ ok: true, snapshot: runtime.snapshot() });
+  } catch (error) {
+    return c.json({ error: stringifyError(error) }, 400);
+  }
 });
 
 app.post("/api/reset", (c) => {
   runtime.resetConversation();
-  return c.json({ ok: true });
+  return c.json({ ok: true, snapshot: runtime.snapshot() });
 });
 
 app.get("/api/events", (c) => {

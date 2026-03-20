@@ -42,20 +42,70 @@ body {
 
 .header {
   padding: 16px 18px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 420px) auto;
+  align-items: end;
+  gap: 16px;
+}
+
+.header-main {
+  min-width: 0;
 }
 
 .title { font-size: 20px; font-weight: 700; }
-.meta { color: var(--muted); font-size: 13px; }
-.status { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.meta {
+  color: var(--muted);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  justify-self: end;
+}
 .dot {
   width: 10px; height: 10px; border-radius: 999px; background: #4ade80;
   box-shadow: 0 0 12px rgba(74, 222, 128, 0.6);
 }
 .dot.busy { background: #f59e0b; box-shadow: 0 0 12px rgba(245, 158, 11, 0.6); }
+
+.cwd-form {
+  display: grid;
+  gap: 8px;
+}
+
+.cwd-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cwd-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cwd-input,
+textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-2);
+  color: var(--text);
+  padding: 12px 14px;
+  font: inherit;
+}
+
+.cwd-input {
+  min-width: 0;
+}
 
 .messages {
   padding: 18px;
@@ -184,15 +234,8 @@ body {
 .composer { padding: 14px; }
 form { display: grid; gap: 12px; }
 textarea {
-  width: 100%;
   min-height: 110px;
   resize: vertical;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--panel-2);
-  color: var(--text);
-  padding: 12px 14px;
-  font: inherit;
 }
 .actions {
   display: flex; justify-content: space-between; align-items: center; gap: 12px;
@@ -210,8 +253,26 @@ button {
 button:disabled { opacity: 0.6; cursor: not-allowed; }
 .error { color: #fca5a5; min-height: 20px; font-size: 13px; }
 
+@media (max-width: 860px) {
+  .header {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .status {
+    justify-self: start;
+  }
+}
+
 @media (max-width: 640px) {
   .app { padding: 12px; }
-  .header { align-items: flex-start; flex-direction: column; }
-  .actions { align-items: flex-start; flex-direction: column; }
+  .cwd-controls,
+  .actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  button {
+    width: 100%;
+  }
 }

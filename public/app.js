@@ -1,5 +1,6 @@
 const state = {
   threadId: "",
+  cwd: "",
   processing: false,
   messages: [],
 };
@@ -18,8 +19,18 @@ const elements = {
   form: document.getElementById("composerForm"),
   input: document.getElementById("input"),
   sendButton: document.getElementById("sendButton"),
+  cwdForm: document.getElementById("cwdForm"),
+  cwdInput: document.getElementById("cwdInput"),
+  cwdButton: document.getElementById("cwdButton"),
   error: document.getElementById("error"),
 };
+
+function applySnapshot(snapshot) {
+  state.threadId = snapshot.threadId;
+  state.cwd = snapshot.cwd;
+  state.processing = snapshot.processing;
+  state.messages = snapshot.messages;
+}
 
 function upsertMessage(message) {
   const index = state.messages.findIndex((item) => item.id === message.id);
@@ -214,6 +225,10 @@ function render() {
   elements.statusDot.classList.toggle("busy", state.processing);
   elements.emptyState.style.display = state.messages.length ? "none" : "block";
 
+  if (document.activeElement !== elements.cwdInput) {
+    elements.cwdInput.value = state.cwd || "";
+  }
+
   const scrollBottomGap = elements.messages.scrollHeight - elements.messages.scrollTop - elements.messages.clientHeight;
   const shouldStickToBottom = scrollBottomGap < 80;
 
@@ -235,16 +250,37 @@ function render() {
 async function loadSnapshot() {
   const response = await fetch("/api/conversation", { cache: "no-store" });
   if (!response.ok) throw new Error("Failed to load conversation.");
-  const snapshot = await response.json();
-  state.threadId = snapshot.threadId;
-  state.processing = snapshot.processing;
-  state.messages = snapshot.messages;
+  applySnapshot(await response.json());
   render();
+}
+
+async function updateCWD(cwd) {
+  const response = await fetch("/api/cwd", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cwd }),
+  });
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(body.error || "Failed to update CWD.");
+  }
+
+  if (body.snapshot) {
+    applySnapshot(body.snapshot);
+    render();
+    elements.cwdInput.value = state.cwd;
+  }
 }
 
 async function resetConversation() {
   const response = await fetch("/api/reset", { method: "POST" });
-  if (!response.ok) throw new Error("Failed to reset conversation.");
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || "Failed to reset conversation.");
+  if (body.snapshot) {
+    applySnapshot(body.snapshot);
+    render();
+  }
 }
 
 async function sendMessage(text) {
@@ -256,12 +292,17 @@ async function sendMessage(text) {
   const response = await fetch("/api/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, cwd: elements.cwdInput.value || state.cwd }),
   });
 
+  const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
     throw new Error(body.error || "Failed to send message.");
+  }
+
+  if (body.snapshot) {
+    applySnapshot(body.snapshot);
+    render();
   }
 }
 
@@ -271,18 +312,12 @@ function connectEvents() {
     const payload = JSON.parse(event.data);
     switch (payload.type) {
       case "snapshot":
-        state.threadId = payload.data.threadId;
-        state.processing = payload.data.processing;
-        state.messages = payload.data.messages;
+      case "conversation-reset":
+        applySnapshot(payload.data);
         break;
       case "message-added":
       case "message-updated":
         upsertMessage(payload.data);
-        break;
-      case "conversation-reset":
-        state.threadId = payload.data.threadId;
-        state.processing = payload.data.processing;
-        state.messages = payload.data.messages;
         break;
       case "processing":
         state.processing = payload.data.processing;
@@ -299,6 +334,23 @@ function connectEvents() {
     setTimeout(connectEvents, 1000);
   };
 }
+
+elements.cwdForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const cwd = elements.cwdInput.value.trim();
+  if (!cwd) return;
+
+  elements.error.textContent = "";
+  elements.cwdButton.disabled = true;
+
+  try {
+    await updateCWD(cwd);
+  } catch (error) {
+    elements.error.textContent = error.message || String(error);
+  } finally {
+    elements.cwdButton.disabled = false;
+  }
+});
 
 elements.form.addEventListener("submit", async (event) => {
   event.preventDefault();
