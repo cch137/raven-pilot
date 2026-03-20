@@ -242,7 +242,17 @@ async function loadSnapshot() {
   render();
 }
 
+async function resetConversation() {
+  const response = await fetch("/api/reset", { method: "POST" });
+  if (!response.ok) throw new Error("Failed to reset conversation.");
+}
+
 async function sendMessage(text) {
+  if (text.trim() === "/reset") {
+    await resetConversation();
+    return;
+  }
+
   const response = await fetch("/api/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

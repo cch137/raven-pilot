@@ -17,6 +17,7 @@ import { dirTreeTool } from "./tools/dir_tree";
 import { readTextFilesTool } from "./tools/read_text_files";
 import { getImagePart, readImageFileTool } from "./tools/read_image_files";
 import { writeTextFileTool } from "./tools/write_text_file";
+import { deletePathTool } from "./tools/delete_path";
 
 dotenv.config();
 
@@ -55,7 +56,6 @@ type ToolLike = {
 
 class AgentRuntime {
   private readonly subscribers = new Set<(event: StreamEvent) => void>();
-  private readonly signal = { shouldReset: false };
   private readonly queue: string[] = [];
   private readonly model;
   private readonly graph;
@@ -70,19 +70,7 @@ class AgentRuntime {
       this.wrapTool(readTextFilesTool as ToolLike),
       this.wrapTool(readImageFileTool as ToolLike),
       this.wrapTool(writeTextFileTool as ToolLike),
-      this.wrapTool(
-        tool(
-          async () => {
-            this.signal.shouldReset = true;
-            return "Starting a new conversation. Memory has been cleared.";
-          },
-          {
-            name: "reset",
-            description: "Start a new conversation and clear all memory",
-            schema: z.object({}),
-          },
-        ) as ToolLike,
-      ),
+      this.wrapTool(deletePathTool as ToolLike),
     ];
 
     this.model = new ChatOpenAI("gpt-5.4", {
@@ -133,21 +121,17 @@ class AgentRuntime {
       return { messages };
     };
 
-    const shouldStop = () => {
-      return this.signal.shouldReset ? "stop" : "agent";
-    };
-
     this.graph = new StateGraph(MessagesAnnotation)
       .addNode("agent", callModel)
       .addNode("tools", new ToolNode(tools))
       .addNode("toolHandler", specialToolHandler)
       .addEdge(START, "agent")
-      .addConditionalEdges("agent", toolsCondition)
-      .addEdge("tools", "toolHandler")
-      .addConditionalEdges("toolHandler", shouldStop, {
-        agent: "agent",
-        stop: END,
+      .addConditionalEdges("agent", toolsCondition, {
+        tools: "tools",
+        __end__: END,
       })
+      .addEdge("tools", "toolHandler")
+      .addEdge("toolHandler", "agent")
       .compile({ checkpointer: new MemorySaver() });
   }
 
@@ -170,10 +154,24 @@ class AgentRuntime {
   async enqueueUserMessage(content: string) {
     const trimmed = content.trim();
     if (!trimmed) throw new Error("Message cannot be empty.");
+    if (trimmed === "/reset") {
+      this.resetConversation();
+      return;
+    }
     this.queue.push(trimmed);
     this.runQueue().catch((error) => {
       console.error("Queue processing failed", error);
     });
+  }
+
+  resetConversation() {
+    this.queue.length = 0;
+    this.processing = false;
+    this.threadId = crypto.randomUUID();
+    this.messages = [];
+    this.broadcast({ type: "conversation-reset", data: this.snapshot() });
+    this.addMessage("system", "message", "New conversation started.", "System");
+    this.broadcast({ type: "processing", data: { processing: false } });
   }
 
   private wrapTool(toolDef: ToolLike) {
@@ -226,8 +224,6 @@ class AgentRuntime {
   }
 
   private async processUserMessage(input: string) {
-    this.signal.shouldReset = false;
-
     this.addMessage("user", "message", input, "User");
     this.setProcessing(true);
 
@@ -242,29 +238,14 @@ class AgentRuntime {
       );
 
       for await (const [_subgraphs, _mode, _chunk] of stream) {
-        if (this.signal.shouldReset) break;
-      }
-
-      if (this.signal.shouldReset) {
-        this.resetConversation();
-        return;
+        // consume the stream to drive incremental updates
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.addMessage("system", "message", `Error: ${message}`, "System");
     } finally {
-      if (!this.signal.shouldReset) {
-        this.setProcessing(false);
-      }
+      this.setProcessing(false);
     }
-  }
-
-  private resetConversation() {
-    this.threadId = crypto.randomUUID();
-    this.messages = [];
-    this.broadcast({ type: "conversation-reset", data: this.snapshot() });
-    this.addMessage("system", "message", "New conversation started.", "System");
-    this.setProcessing(false);
   }
 
   private setProcessing(processing: boolean) {
@@ -393,6 +374,11 @@ app.post("/api/messages", async (c) => {
   }
 
   await runtime.enqueueUserMessage(text);
+  return c.json({ ok: true });
+});
+
+app.post("/api/reset", (c) => {
+  runtime.resetConversation();
   return c.json({ ok: true });
 });
 
