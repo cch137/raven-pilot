@@ -4,9 +4,13 @@ import {
   MessagesAnnotation,
   MemorySaver,
   START,
+  END,
   Messages,
 } from "@langchain/langgraph";
 import { ToolNode, toolsCondition } from "@langchain/langgraph/prebuilt";
+import { AIMessageChunk, ToolMessage } from "@langchain/core/messages";
+import { tool } from "@langchain/core/tools";
+import { z } from "zod";
 import dotenv from "dotenv";
 import fs from "fs/promises";
 import { watch } from "fs";
@@ -14,17 +18,40 @@ import { dirTreeTool } from "./tools/dir_tree";
 import { readTextFilesTool } from "./tools/read_text_files";
 import { getImagePart, readImageFileTool } from "./tools/read_image_files";
 import { writeTextFileTool } from "./tools/write_text_file";
-import { AIMessageChunk, ToolMessage } from "@langchain/core/messages";
 
 dotenv.config();
 
 const INPUT_FILEPATH = "input.txt";
+
+const signal = { shouldExit: false, shouldReset: false };
 
 const tools = [
   dirTreeTool,
   readTextFilesTool,
   readImageFileTool,
   writeTextFileTool,
+  tool(
+    () => {
+      signal.shouldExit = true;
+      return "Exiting the conversation...";
+    },
+    {
+      name: "exit",
+      description: "End the conversation",
+      schema: z.object({}),
+    },
+  ),
+  tool(
+    () => {
+      signal.shouldReset = true;
+      return "Starting a new conversation. Memory has been cleared.";
+    },
+    {
+      name: "reset",
+      description: "Start a new conversation and clear all memory",
+      schema: z.object({}),
+    },
+  ),
 ];
 
 const model = new ChatOpenAI("gpt-5.4", {
@@ -79,6 +106,10 @@ function specialToolHandler(state: typeof MessagesAnnotation.State) {
   return { messages };
 }
 
+function shouldStop() {
+  return signal.shouldExit || signal.shouldReset ? "stop" : "agent";
+}
+
 const graph = new StateGraph(MessagesAnnotation)
   .addNode("agent", callModel)
   .addNode("tools", new ToolNode(tools))
@@ -86,7 +117,10 @@ const graph = new StateGraph(MessagesAnnotation)
   .addEdge(START, "agent")
   .addConditionalEdges("agent", toolsCondition)
   .addEdge("tools", "toolHandler")
-  .addEdge("toolHandler", "agent")
+  .addConditionalEdges("toolHandler", shouldStop, {
+    agent: "agent",
+    stop: END,
+  })
   .compile({ checkpointer: new MemorySaver() });
 
 async function waitForChange(): Promise<void> {
@@ -121,7 +155,10 @@ const encode = encoder.encode.bind(encoder);
     await fs.writeFile(INPUT_FILEPATH, "", "utf-8");
   }
 
-  console.log(`Watching ${INPUT_FILEPATH} for changes...`);
+  let threadId = crypto.randomUUID();
+  console.log(
+    `Watching ${INPUT_FILEPATH} for changes... (thread: ${threadId})`,
+  );
 
   while (true) {
     await waitForChange();
@@ -131,17 +168,32 @@ const encode = encoder.encode.bind(encoder);
 
     console.log(`\n[Human]: ${input}`);
 
+    signal.shouldExit = false;
+    signal.shouldReset = false;
+
     const stream = await graph.stream(
       { messages: [{ role: "user", content: input }] },
       {
-        configurable: { thread_id: "main" },
+        configurable: { thread_id: threadId },
         subgraphs: true,
         streamMode: ["updates", "values"],
       },
     );
 
     for await (const [_subgraphs, _mode, _chunk] of stream) {
-      continue;
+      if (signal.shouldExit || signal.shouldReset) break;
+    }
+
+    if (signal.shouldExit) {
+      console.log("\n[System]: Conversation ended. Exiting.");
+      process.exit(0);
+    }
+
+    if (signal.shouldReset) {
+      threadId = crypto.randomUUID();
+      console.log(
+        `\n[System]: New conversation started. (thread: ${threadId})`,
+      );
     }
   }
 })();
