@@ -26,9 +26,9 @@ Use this to create a new text file, replace a file completely, or write generate
 
 ### `stringReplace`
 
-Use this for small, targeted edits to an existing text file when you can identify the exact text to replace. Prefer it over a full rewrite when a change is localized and can be expressed as an exact string substitution.
+Use this for small, targeted edits to an existing text file. By default requires exactly one match; set `replaceAll: true` to replace all.
 
-Pass the file path, the exact `oldString` to find, and the `newString` to write in its place. By default this should target exactly one match; if every exact match should be updated, set `replaceAll: true`. Read the file first so the replacement text matches exactly, including whitespace and punctuation. If the change is broad, hard to express as an exact string replacement, or likely to touch many regions, use `writeTextFile` instead.
+**`fuzzy` mode (default: `true`, strongly recommended):** Every whitespace sequence in `oldString` is treated as `\s+` in regex matching, tolerating any mismatch in spaces, tabs, or line endings. Only disable `fuzzy` when you need a literal byte-exact match. Always read the file first so `oldString` captures enough surrounding context to be unique.
 
 ### `movePath`
 

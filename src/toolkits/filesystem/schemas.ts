@@ -42,7 +42,7 @@ export const StringReplaceInputSchema = z.object({
   filepath: z.string(),
   oldString: z
     .string()
-    .describe("Exact string to find in the target file"),
+    .describe("String to find in the target file. With fuzzy (default), whitespace sequences are matched loosely."),
   newString: z
     .string()
     .describe("Replacement text for each matched string"),
@@ -50,6 +50,12 @@ export const StringReplaceInputSchema = z.object({
     .boolean()
     .optional()
     .describe("Replace every exact match. Default: false"),
+  fuzzy: z
+    .boolean()
+    .optional()
+    .describe(
+      "Fuzzy-match whitespace in oldString: every whitespace sequence becomes \\s+ in the regex, so indentation and line-ending differences are tolerated. Default: true. Strongly recommended unless you need a literal byte-exact match.",
+    ),
 });
 
 export const CommandInputSchema = z.object({
