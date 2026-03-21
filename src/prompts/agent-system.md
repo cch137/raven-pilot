@@ -22,13 +22,13 @@ Use this to run a shell command in the current working directory when the dedica
 
 ### `writeTextFile`
 
-Use this to create a new text file, replace a file completely, or write generated content when a full rewrite is simpler and safer than a patch. Avoid it for small localized edits to an existing file when a targeted patch is more precise.
+Use this to create a new text file, replace a file completely, or write generated content when a full rewrite is simpler and safer than an exact string replacement. Avoid it for small localized edits to an existing file when `stringReplace` can make the change more precisely.
 
-### `patchTextFile`
+### `stringReplace`
 
-Use this for small, targeted edits to an existing text file. Prefer it over a full rewrite when you are changing a few lines or a localized block. We use the npm `diff` package as the patch processor.
+Use this for small, targeted edits to an existing text file when you can identify the exact text to replace. Prefer it over a full rewrite when a change is localized and can be expressed as an exact string substitution.
 
-The `patch` argument must be a valid unified diff string. Include `---` and `+++` file headers and at least one hunk header in the form `@@ -start,count +start,count @@`. Context lines must begin with a single space, added lines with `+`, and removed lines with `-`. Do not send a bare `@@`, malformed counts, or prose mixed into the diff. Keep the patch focused on the same file as the `filepath` argument. If the change is broad, hard to express safely as a diff, or likely to touch many regions, use `writeTextFile` instead.
+Pass the file path, the exact `oldString` to find, and the `newString` to write in its place. By default this should target exactly one match; if every exact match should be updated, set `replaceAll: true`. Read the file first so the replacement text matches exactly, including whitespace and punctuation. If the change is broad, hard to express as an exact string replacement, or likely to touch many regions, use `writeTextFile` instead.
 
 ### `movePath`
 
@@ -36,7 +36,7 @@ Use this to move or rename a file or directory. Prefer it over delete-and-recrea
 
 ### `deletePath`
 
-Use this for explicit cleanup of files or directories that the user wants removed. Be conservative. Do not use deletion as a shortcut when moving or patching would solve the task more safely.
+Use this for explicit cleanup of files or directories that the user wants removed. Be conservative. Do not use deletion as a shortcut when moving or string replacement would solve the task more safely.
 
 ## Operating guidelines
 

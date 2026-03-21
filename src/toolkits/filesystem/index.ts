@@ -6,9 +6,9 @@ import { createCommandTool } from "./command";
 import { createDeletePathTool } from "./delete-path";
 import { createDirTreeTool } from "./dir-tree";
 import { createMovePathTool } from "./move-path";
-import { createPatchTextFileTool } from "./patch-text-file";
 import { createReadImageFileTool } from "./read-image-file";
 import { createReadTextFilesTool } from "./read-text-files";
+import { createStringReplaceTool } from "./string-replace";
 import { createWriteTextFileTool } from "./write-text-file";
 
 export function createFilesystemToolkit(cwd: string): ToolkitModule {
@@ -30,7 +30,7 @@ export function createFilesystemToolkit(cwd: string): ToolkitModule {
       createReadTextFilesTool(context),
       createReadImageFileTool(context),
       createWriteTextFileTool(context),
-      createPatchTextFileTool(context),
+      createStringReplaceTool(context),
       createMovePathTool(context),
       createDeletePathTool(context),
     ],

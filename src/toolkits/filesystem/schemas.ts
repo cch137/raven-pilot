@@ -38,9 +38,18 @@ export const WriteTextFileInputSchema = z.object({
   content: z.string(),
 });
 
-export const PatchTextFileInputSchema = z.object({
+export const StringReplaceInputSchema = z.object({
   filepath: z.string(),
-  patch: z.string(),
+  oldString: z
+    .string()
+    .describe("Exact string to find in the target file"),
+  newString: z
+    .string()
+    .describe("Replacement text for each matched string"),
+  replaceAll: z
+    .boolean()
+    .optional()
+    .describe("Replace every exact match. Default: false"),
 });
 
 export const CommandInputSchema = z.object({
