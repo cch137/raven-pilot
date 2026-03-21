@@ -1,20 +1,16 @@
 {
   "name": "raven-pilot",
   "version": "0.0.0",
-  "description": "",
-  "homepage": "https://github.com/cch137/raven-pilot#readme",
-  "bugs": {
-    "url": "https://github.com/cch137/raven-pilot/issues"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/cch137/raven-pilot.git"
-  },
-  "license": "ISC",
-  "author": "",
-  "type": "commonjs",
-  "main": "index.ts",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "start:backend": "npm run start --workspace=backend",
+    "start:frontend": "npm run start --workspace=frontend",
+    "build:frontend": "npm run build --workspace=frontend"
   }
 }

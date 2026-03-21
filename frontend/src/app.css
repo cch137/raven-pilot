@@ -1,0 +1,100 @@
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+
+@theme {
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, 'Liberation Mono', 'Courier New', monospace;
+}
+
+/* Scrollbar styling */
+.message-scroll {
+  scrollbar-gutter: stable;
+}
+
+.message-scroll::-webkit-scrollbar,
+.markdown-body pre::-webkit-scrollbar {
+  width: 6px;
+}
+
+.message-scroll::-webkit-scrollbar-track,
+.markdown-body pre::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.message-scroll::-webkit-scrollbar-thumb,
+.markdown-body pre::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  @apply bg-zinc-700/50;
+}
+
+/* Textarea no scrollbar */
+textarea {
+  scrollbar-width: none;
+}
+textarea::-webkit-scrollbar {
+  display: none;
+}
+
+/* Markdown content */
+.markdown-body {
+  @apply text-zinc-200;
+  word-break: break-word;
+}
+
+.markdown-body :where(p, ul, ol, pre, blockquote, table) {
+  margin-top: 0.55rem;
+  margin-bottom: 0.55rem;
+}
+
+.markdown-body :where(h1, h2, h3, h4) {
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.markdown-body :where(ul, ol) {
+  padding-left: 1.25rem;
+}
+
+.markdown-body > :first-child {
+  margin-top: 0;
+}
+
+.markdown-body > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-body pre {
+  overflow-x: auto;
+  @apply border border-zinc-800 rounded-lg bg-zinc-950!;
+  padding: 0.75rem 0.875rem;
+}
+
+.markdown-body code:not(pre code) {
+  @apply border border-zinc-800 rounded-md bg-zinc-900;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.88em;
+}
+
+.markdown-body code:not(pre code)::before,
+.markdown-body code:not(pre code)::after {
+  content: none;
+}
+
+.markdown-body blockquote {
+  @apply border-l-zinc-700 text-zinc-400;
+}
+
+.markdown-body table {
+  display: block;
+  overflow-x: auto;
+}
+
+.markdown-body hr {
+  @apply border-zinc-800;
+}
+
+.markdown-body a {
+  text-decoration-thickness: 1px;
+}

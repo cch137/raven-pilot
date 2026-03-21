@@ -1,0 +1,52 @@
+[
+  {
+    "id": "gpt-5.4",
+    "label": "GPT-5.4",
+    "provider": "openai"
+  },
+  {
+    "id": "gpt-5.4-mini",
+    "label": "GPT-5.4 Mini",
+    "provider": "openai"
+  },
+  {
+    "id": "gpt-5.3-codex",
+    "label": "GPT-5.3 Codex",
+    "provider": "openai"
+  },
+  {
+    "id": "claude-sonnet-4-6",
+    "label": "Claude Sonnet 4.6",
+    "provider": "anthropic"
+  },
+  {
+    "id": "claude-haiku-4-5-20251001",
+    "label": "Claude Haiku 4.5",
+    "provider": "anthropic"
+  },
+  {
+    "id": "claude-opus-4-6",
+    "label": "Claude Opus 4.6",
+    "provider": "anthropic"
+  },
+  {
+    "id": "gemini-3.1-pro-preview",
+    "label": "Gemini 3.1 Pro Preview",
+    "provider": "google"
+  },
+  {
+    "id": "gemini-3-flash-preview",
+    "label": "Gemini 3 Flash Preview",
+    "provider": "google"
+  },
+  {
+    "id": "gemini-3.1-flash-lite-preview",
+    "label": "Gemini 3.1 Flash Lite Preview",
+    "provider": "google"
+  },
+  {
+    "id": "grok-4.20-0309-reasoning",
+    "label": "Grok 4.20 Reasoning",
+    "provider": "xai"
+  }
+]
