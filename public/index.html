@@ -17,22 +17,38 @@
     </script>
     <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
     <link rel="stylesheet" href="/styles.css" />
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js" defer></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"
+      defer
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"
+      defer
+    ></script>
     <script src="https://unpkg.com/lucide@latest" defer></script>
   </head>
   <body class="overflow-hidden bg-zinc-950 text-zinc-100 antialiased">
     <main class="mx-auto flex h-[100dvh] min-h-0 max-w-6xl flex-col px-4 py-3">
-      <header class="flex items-center justify-between gap-3 border-b border-white/10 pb-3">
+      <header
+        class="flex items-center justify-between gap-3 border-b border-white/10 pb-3"
+      >
         <div class="flex min-w-0 items-center gap-2.5">
-          <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl bg-zinc-900 text-zinc-100 ring-1 ring-white/10">
+          <div
+            class="flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl bg-zinc-900 text-zinc-100 ring-1 ring-white/10"
+          >
             <i data-lucide="bot" class="h-4 w-4"></i>
           </div>
           <div class="min-w-0">
             <div class="flex min-w-0 items-center gap-2 text-sm">
-              <h1 class="truncate text-sm font-semibold tracking-tight text-zinc-100">Raven Pilot</h1>
+              <h1
+                class="truncate text-sm font-semibold tracking-tight text-zinc-100"
+              >
+                Raven Pilot
+              </h1>
               <span class="text-zinc-700">/</span>
-              <div class="flex min-w-0 items-center gap-1 text-[11px] text-zinc-500">
+              <div
+                class="flex min-w-0 items-center gap-1 text-[11px] text-zinc-500"
+              >
                 <i data-lucide="hash" class="h-3.5 w-3.5"></i>
                 <span id="threadId" class="truncate">-</span>
               </div>
@@ -41,8 +57,13 @@
         </div>
 
         <div class="flex items-center gap-2">
-          <div class="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-white/10 bg-zinc-900/80 px-3 text-[13px] text-zinc-300">
-            <span id="statusDot" class="h-2 w-2 rounded-full bg-zinc-400"></span>
+          <div
+            class="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-white/10 bg-zinc-900/80 px-3 text-[13px] text-zinc-300"
+          >
+            <span
+              id="statusDot"
+              class="h-2 w-2 rounded-full bg-zinc-400"
+            ></span>
             <i data-lucide="activity" class="h-3.5 w-3.5 text-zinc-500"></i>
             <span id="statusText">Idle</span>
           </div>
@@ -60,17 +81,29 @@
       </header>
 
       <section class="flex min-h-0 flex-1 flex-col pt-3">
-        <div id="messages" class="message-scroll min-h-0 flex-1 overflow-y-auto px-1" aria-live="polite">
+        <div
+          id="messages"
+          class="message-scroll min-h-0 flex-1 overflow-y-auto px-1"
+          aria-live="polite"
+        >
           <div id="messageList" class="space-y-4 pb-4 pt-1"></div>
-          <div id="emptyState" class="flex min-h-full items-center justify-center px-4 text-center text-sm text-zinc-500">
+          <div
+            id="emptyState"
+            class="flex min-h-full items-center justify-center px-4 text-center text-sm text-zinc-500"
+          >
             No messages yet.
           </div>
         </div>
 
         <div class="mt-2 space-y-2 border-t border-white/10 pt-2">
           <div class="flex flex-col gap-2 xl:flex-row xl:items-center">
-            <form id="modelForm" class="flex min-w-0 flex-[1.4] flex-wrap items-center gap-2">
-              <div class="flex h-9 min-w-[180px] flex-1 items-center rounded-xl border border-white/10 bg-zinc-950/60 px-3 text-[13px] text-zinc-100 transition focus-within:border-zinc-400 focus-within:bg-zinc-900">
+            <form
+              id="modelForm"
+              class="flex min-w-0 flex-[1.4] flex-wrap items-center gap-2"
+            >
+              <div
+                class="flex h-9 min-w-[180px] flex-1 items-center rounded-xl border border-white/10 bg-zinc-950/60 px-3 text-[13px] text-zinc-100 transition focus-within:border-zinc-400 focus-within:bg-zinc-900"
+              >
                 <label for="modelInput" class="sr-only">Model</label>
                 <input
                   id="modelInput"
@@ -82,9 +115,19 @@
                 />
               </div>
 
-              <div id="reasoningEffortSelectRoot" data-select-root class="custom-select relative min-w-[120px] flex-1 sm:flex-none">
-                <label for="reasoningEffortSelect" class="sr-only">Reasoning</label>
-                <input id="reasoningEffortSelect" type="hidden" value="minimal" />
+              <div
+                id="reasoningEffortSelectRoot"
+                data-select-root
+                class="custom-select relative min-w-[120px] flex-1 sm:flex-none"
+              >
+                <label for="reasoningEffortSelect" class="sr-only"
+                  >Reasoning</label
+                >
+                <input
+                  id="reasoningEffortSelect"
+                  type="hidden"
+                  value="minimal"
+                />
                 <button
                   type="button"
                   data-select-trigger
@@ -94,8 +137,28 @@
                   title="Minimal"
                   class="flex h-9 w-full items-center justify-between gap-2 rounded-xl border border-white/10 bg-zinc-950/60 px-3 text-left text-[13px] text-zinc-100 transition hover:bg-zinc-900 focus:outline-none focus-visible:border-zinc-400 focus-visible:bg-zinc-900"
                 >
-                  <span data-select-value class="min-w-0 truncate text-[13px] text-zinc-100">Minimal</span>
-                  <i data-select-chevron data-lucide="chevron-down" class="h-3.5 w-3.5 shrink-0 text-zinc-500"></i>
+                  <span class="flex min-w-0 items-center gap-2">
+                    <span
+                      data-select-icon
+                      class="flex h-4 w-4 shrink-0 items-center justify-center text-zinc-500"
+                    >
+                      <i
+                        data-lucide="brain"
+                        class="h-3.5 w-3.5"
+                        aria-hidden="true"
+                      ></i>
+                    </span>
+                    <span
+                      data-select-value
+                      class="min-w-0 truncate text-[13px] text-zinc-100"
+                      >Minimal</span
+                    >
+                  </span>
+                  <i
+                    data-select-chevron
+                    data-lucide="chevron-down"
+                    class="h-3.5 w-3.5 shrink-0 text-zinc-500"
+                  ></i>
                 </button>
                 <div
                   id="reasoningEffortSelectMenu"
@@ -105,14 +168,70 @@
                   aria-label="Reasoning"
                   class="absolute left-0 top-[calc(100%+0.4rem)] z-20 w-full overflow-hidden rounded-xl border border-white/10 bg-zinc-900/95 p-1 shadow-panel backdrop-blur"
                 >
-                  <button type="button" data-select-option data-value="minimal" class="flex w-full items-center rounded-lg px-3 py-2 text-left text-[13px] transition">Minimal</button>
-                  <button type="button" data-select-option data-value="low" class="flex w-full items-center rounded-lg px-3 py-2 text-left text-[13px] transition">Low</button>
-                  <button type="button" data-select-option data-value="medium" class="flex w-full items-center rounded-lg px-3 py-2 text-left text-[13px] transition">Medium</button>
-                  <button type="button" data-select-option data-value="high" class="flex w-full items-center rounded-lg px-3 py-2 text-left text-[13px] transition">High</button>
+                  <button
+                    type="button"
+                    data-select-option
+                    data-value="minimal"
+                    data-select-icon="leaf"
+                    class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] transition"
+                  >
+                    <i
+                      data-lucide="leaf"
+                      class="h-3.5 w-3.5 shrink-0 text-zinc-500"
+                      aria-hidden="true"
+                    ></i>
+                    <span>Minimal</span>
+                  </button>
+                  <button
+                    type="button"
+                    data-select-option
+                    data-value="low"
+                    data-select-icon="feather"
+                    class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] transition"
+                  >
+                    <i
+                      data-lucide="feather"
+                      class="h-3.5 w-3.5 shrink-0 text-zinc-500"
+                      aria-hidden="true"
+                    ></i>
+                    <span>Low</span>
+                  </button>
+                  <button
+                    type="button"
+                    data-select-option
+                    data-value="medium"
+                    data-select-icon="brain"
+                    class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] transition"
+                  >
+                    <i
+                      data-lucide="brain"
+                      class="h-3.5 w-3.5 shrink-0 text-zinc-500"
+                      aria-hidden="true"
+                    ></i>
+                    <span>Medium</span>
+                  </button>
+                  <button
+                    type="button"
+                    data-select-option
+                    data-value="high"
+                    data-select-icon="flame"
+                    class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] transition"
+                  >
+                    <i
+                      data-lucide="flame"
+                      class="h-3.5 w-3.5 shrink-0 text-zinc-500"
+                      aria-hidden="true"
+                    ></i>
+                    <span>High</span>
+                  </button>
                 </div>
               </div>
 
-              <div id="verbositySelectRoot" data-select-root class="custom-select relative min-w-[110px] flex-1 sm:flex-none">
+              <div
+                id="verbositySelectRoot"
+                data-select-root
+                class="custom-select relative min-w-[110px] flex-1 sm:flex-none"
+              >
                 <label for="verbositySelect" class="sr-only">Verbosity</label>
                 <input id="verbositySelect" type="hidden" value="low" />
                 <button
@@ -124,8 +243,28 @@
                   title="Low"
                   class="flex h-9 w-full items-center justify-between gap-2 rounded-xl border border-white/10 bg-zinc-950/60 px-3 text-left text-[13px] text-zinc-100 transition hover:bg-zinc-900 focus:outline-none focus-visible:border-zinc-400 focus-visible:bg-zinc-900"
                 >
-                  <span data-select-value class="min-w-0 truncate text-[13px] text-zinc-100">Low</span>
-                  <i data-select-chevron data-lucide="chevron-down" class="h-3.5 w-3.5 shrink-0 text-zinc-500"></i>
+                  <span class="flex min-w-0 items-center gap-2">
+                    <span
+                      data-select-icon
+                      class="flex h-4 w-4 shrink-0 items-center justify-center text-zinc-500"
+                    >
+                      <i
+                        data-lucide="align-left"
+                        class="h-3.5 w-3.5"
+                        aria-hidden="true"
+                      ></i>
+                    </span>
+                    <span
+                      data-select-value
+                      class="min-w-0 truncate text-[13px] text-zinc-100"
+                      >Low</span
+                    >
+                  </span>
+                  <i
+                    data-select-chevron
+                    data-lucide="chevron-down"
+                    class="h-3.5 w-3.5 shrink-0 text-zinc-500"
+                  ></i>
                 </button>
                 <div
                   id="verbositySelectMenu"
@@ -135,9 +274,48 @@
                   aria-label="Verbosity"
                   class="absolute left-0 top-[calc(100%+0.4rem)] z-20 w-full overflow-hidden rounded-xl border border-white/10 bg-zinc-900/95 p-1 shadow-panel backdrop-blur"
                 >
-                  <button type="button" data-select-option data-value="low" class="flex w-full items-center rounded-lg px-3 py-2 text-left text-[13px] transition">Low</button>
-                  <button type="button" data-select-option data-value="medium" class="flex w-full items-center rounded-lg px-3 py-2 text-left text-[13px] transition">Medium</button>
-                  <button type="button" data-select-option data-value="high" class="flex w-full items-center rounded-lg px-3 py-2 text-left text-[13px] transition">High</button>
+                  <button
+                    type="button"
+                    data-select-option
+                    data-value="low"
+                    data-select-icon="align-left"
+                    class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] transition"
+                  >
+                    <i
+                      data-lucide="align-left"
+                      class="h-3.5 w-3.5 shrink-0 text-zinc-500"
+                      aria-hidden="true"
+                    ></i>
+                    <span>Low</span>
+                  </button>
+                  <button
+                    type="button"
+                    data-select-option
+                    data-value="medium"
+                    data-select-icon="align-left"
+                    class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] transition"
+                  >
+                    <i
+                      data-lucide="align-left"
+                      class="h-3.5 w-3.5 shrink-0 text-zinc-500"
+                      aria-hidden="true"
+                    ></i>
+                    <span>Medium</span>
+                  </button>
+                  <button
+                    type="button"
+                    data-select-option
+                    data-value="high"
+                    data-select-icon="align-justify"
+                    class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] transition"
+                  >
+                    <i
+                      data-lucide="align-justify"
+                      class="h-3.5 w-3.5 shrink-0 text-zinc-500"
+                      aria-hidden="true"
+                    ></i>
+                    <span>High</span>
+                  </button>
                 </div>
               </div>
 
@@ -155,7 +333,10 @@
             <form id="cwdForm" class="flex min-w-0 flex-1 items-center gap-2">
               <label for="cwdInput" class="sr-only">Workspace</label>
               <div class="relative min-w-0 flex-1">
-                <i data-lucide="folder-open" class="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500"></i>
+                <i
+                  data-lucide="folder-open"
+                  class="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-500"
+                ></i>
                 <input
                   id="cwdInput"
                   class="h-9 w-full rounded-xl border border-white/10 bg-zinc-950/60 py-2 pl-9 pr-3 text-[13px] text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-zinc-400 focus:bg-zinc-900"
@@ -185,6 +366,7 @@
                 rows="1"
                 class="box-border max-h-32 min-h-10 w-full resize-none rounded-xl border border-white/10 bg-zinc-900/80 px-3.5 py-2 text-[13px] leading-5 text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-zinc-400 focus:bg-zinc-900"
                 placeholder="Ask the agent..."
+                autofocus
               ></textarea>
             </div>
             <button
@@ -201,7 +383,12 @@
       </section>
     </main>
 
-    <div id="toastRegion" class="pointer-events-none fixed inset-x-0 top-4 z-50 flex justify-center px-4 sm:justify-end sm:px-6" aria-live="polite" aria-atomic="false">
+    <div
+      id="toastRegion"
+      class="pointer-events-none fixed inset-x-0 top-4 z-50 flex justify-center px-4 sm:justify-end sm:px-6"
+      aria-live="polite"
+      aria-atomic="false"
+    >
       <div id="toastStack" class="flex w-full max-w-sm flex-col gap-3"></div>
     </div>
 
