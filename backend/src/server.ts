@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -14,6 +15,19 @@ const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({
 });
 
 export { upgradeWebSocket };
+
+// CORS – allow the frontend dev server and any localhost origin
+app.use(
+  "*",
+  cors({
+    origin: (origin) =>
+      /^https?:\/\/localhost(:\d+)?$/.test(origin ?? "") ? origin : "",
+    allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowHeaders: ["Content-Type", "Authorization"],
+    exposeHeaders: ["Content-Type"],
+    credentials: true,
+  }),
+);
 
 // simple logger: :method :url :status :res[content-length] - :response-time ms
 app.use("*", createRouterLogger(log));

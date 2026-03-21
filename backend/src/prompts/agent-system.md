@@ -41,3 +41,19 @@ Use this for explicit cleanup of files or directories that the user wants remove
 ## Operating guidelines
 
 Resolve every relative path from the runtime working directory provided in the conversation. When a task touches code, inspect relevant files before editing. After meaningful changes, verify the affected files or structure when useful. Keep final responses focused on what changed and any important follow-up.
+
+## Runtime environment
+
+Runtime working directory (CWD): `{{cwd}}`
+
+Host OS information:
+
+| Property | Value |
+| -------- | ----- |
+| Platform | {{os.platform}} |
+| Type     | {{os.type}} |
+| Release  | {{os.release}} |
+| Arch     | {{os.arch}} |
+| Hostname | {{os.hostname}} |
+
+Resolve every relative path for tool usage from the CWD above.

@@ -1,4 +1,6 @@
 import fs from "fs/promises";
+import os from "os";
+import Handlebars from "handlebars";
 import {
   StateGraph,
   MessagesAnnotation,
@@ -10,6 +12,7 @@ import { ToolNode, toolsCondition } from "@langchain/langgraph/prebuilt";
 import { AIMessageChunk, ToolMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import dotenv from "dotenv";
+import safeStableStringify from "safe-stable-stringify";
 import { app, registerStaticAssets, startServers } from "./server";
 import {
   buildSkillsSystemPromptSection,
@@ -18,35 +21,85 @@ import {
 } from "./toolkits";
 import { stringifyError } from "./utils/errors";
 import { resolvePathFromBase } from "./utils/paths";
-import { createRoutedAgentModel, parseRoutedModelIdentifier } from "./utils/model-router";
+import {
+  createRoutedAgentModel,
+  parseRoutedModelIdentifier,
+  type SupportedModelProvider,
+} from "./utils/model-router";
 
 dotenv.config();
+
+// ---------------------------------------------------------------------------
+// Model catalogue – loaded once at startup from config/models.json
+// ---------------------------------------------------------------------------
+
+type ModelConfig = {
+  id: string;
+  label: string;
+  provider: SupportedModelProvider;
+};
+
+const MODELS_CONFIG_URL = new URL("./config/models.json", import.meta.url);
+
+const modelsConfigPromise: Promise<ModelConfig[]> = fs
+  .readFile(MODELS_CONFIG_URL, "utf-8")
+  .then((raw) => JSON.parse(raw) as ModelConfig[])
+  .catch((err) => {
+    console.error("Failed to load models config:", err);
+    return [];
+  });
+
+void modelsConfigPromise;
+
+/** Build a routed model string (@provider/model) from a bare model id. */
+async function resolveRoutedModel(modelId: string): Promise<string> {
+  // Already in @provider/model format — pass through.
+  if (modelId.startsWith("@")) return modelId;
+
+  const catalogue = await modelsConfigPromise;
+  const entry = catalogue.find((m) => m.id === modelId);
+  if (!entry) {
+    throw new Error(
+      `Unknown model "${modelId}". ` +
+        `Use @provider/model format or choose a model from the catalogue.`,
+    );
+  }
+  return `@${entry.provider}/${entry.id}`;
+}
+
+// ---------------------------------------------------------------------------
 
 const AGENT_SYSTEM_PROMPT_URL = new URL(
   "./prompts/agent-system.md",
   import.meta.url,
 );
-const agentSystemPromptPromise = Promise.all([
-  fs.readFile(AGENT_SYSTEM_PROMPT_URL, "utf-8").then((content) => content.trim()),
+const agentSystemTemplatePromise = Promise.all([
+  fs
+    .readFile(AGENT_SYSTEM_PROMPT_URL, "utf-8")
+    .then((content) => content.trim()),
   buildSkillsSystemPromptSection(),
 ]).then(([basePrompt, skillsSection]) => {
-  return [basePrompt, skillsSection].filter(Boolean).join("\n\n").trim();
+  const combined = [basePrompt, skillsSection]
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
+  return Handlebars.compile(combined, { noEscape: true });
 });
-void agentSystemPromptPromise.catch(() => {});
+void agentSystemTemplatePromise.catch(() => {});
 
-async function getAgentSystemPrompt() {
-  return agentSystemPromptPromise;
+function buildOsContext() {
+  return {
+    platform: os.platform(),
+    type: os.type(),
+    release: os.release(),
+    arch: os.arch(),
+    hostname: os.hostname(),
+  };
 }
 
 async function getInvocationSystemPrompt(cwd: string) {
-  const agentSystemPrompt = await getAgentSystemPrompt();
-  return [
-    agentSystemPrompt,
-    `Runtime working directory (CWD): ${cwd}`,
-    "Resolve every relative path for tool usage from this directory.",
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+  const template = await agentSystemTemplatePromise;
+  return template({ cwd, os: buildOsContext() });
 }
 
 type ConversationRole = "user" | "assistant" | "system" | "tool";
@@ -84,7 +137,7 @@ const VERBOSITY_VALUES = [
 ] as const satisfies readonly Verbosity[];
 
 const DEFAULT_MODEL_SETTINGS: ModelSettings = {
-  model: "@anthropic/claude-sonnet-4-6",
+  model: "claude-sonnet-4-6",
   reasoningEffort: "high",
   verbosity: "low",
 };
@@ -155,8 +208,11 @@ class AgentRuntime {
     return resolved;
   }
 
-  setModelSettings(nextSettings: Partial<ModelSettings>) {
-    const normalized = normalizeModelSettings(nextSettings, this.modelSettings);
+  async setModelSettings(nextSettings: Partial<ModelSettings>) {
+    const normalized = await normalizeModelSettings(
+      nextSettings,
+      this.modelSettings,
+    );
 
     if (isSameModelSettings(normalized, this.modelSettings)) {
       return this.modelSettings;
@@ -199,14 +255,20 @@ class AgentRuntime {
     this.broadcast({ type: "processing", data: { processing: false } });
   }
 
-  private getGraph(cwd: string, modelSettings: ModelSettings) {
+  private async getGraph(cwd: string, modelSettings: ModelSettings) {
     const cacheKey = `${cwd}::${JSON.stringify(modelSettings)}`;
     const cached = this.graphs.get(cacheKey);
     if (cached) return cached;
 
+    const routedModel = await resolveRoutedModel(modelSettings.model);
+    const resolvedSettings: ModelSettings = {
+      ...modelSettings,
+      model: routedModel,
+    };
+
     const toolkit = createToolkit(cwd);
     const tools = toolkit.tools.map((toolDef) => this.wrapTool(toolDef));
-    const model = createRoutedAgentModel(modelSettings, tools);
+    const model = createRoutedAgentModel(resolvedSettings, tools);
 
     const callModel = async (state: typeof MessagesAnnotation.State) => {
       const stream = await model.stream(
@@ -290,7 +352,7 @@ class AgentRuntime {
         this.addMessage(
           "tool",
           "tool-call",
-          formatToolCall(toolDef.name, input),
+          safePrettyJson(input),
           `Tool Call: ${toolDef.name}`,
           groupId,
         );
@@ -344,7 +406,7 @@ class AgentRuntime {
     this.setProcessing(true);
 
     try {
-      const graph = this.getGraph(cwd, modelSettings);
+      const graph = await this.getGraph(cwd, modelSettings);
       const stream = await graph.stream(
         {
           messages: [{ role: "user", content: input }],
@@ -360,7 +422,6 @@ class AgentRuntime {
       for await (const [_subgraphs, _mode, _chunk] of stream) {
         // consume the stream to drive incremental updates
       }
-
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.addMessage("system", "message", `Error: ${message}`, "System");
@@ -430,16 +491,8 @@ function isSystemConversationMessage(message: unknown) {
   return role === "system" || type === "system";
 }
 
-function formatToolCall(name: string, input: unknown) {
-  return `${name}(${safePrettyJson(input)})`;
-}
-
 function safePrettyJson(value: unknown) {
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
+  return safeStableStringify(value, null, 2) ?? "null";
 }
 
 function stringifyValue(value: unknown) {
@@ -447,19 +500,24 @@ function stringifyValue(value: unknown) {
   return safePrettyJson(value);
 }
 
-function normalizeModelSettings(
+async function normalizeModelSettings(
   value: Partial<ModelSettings>,
   fallback: ModelSettings = DEFAULT_MODEL_SETTINGS,
-): ModelSettings {
-  const model =
+): Promise<ModelSettings> {
+  const rawModel =
     typeof value.model === "string" ? value.model.trim() : fallback.model;
 
-  if (!model) {
+  if (!rawModel) {
     throw new Error("Model name cannot be empty.");
   }
 
+  // Validate: if already @provider/model, parse to check; otherwise look up catalogue.
+  const model = rawModel.startsWith("@")
+    ? parseRoutedModelIdentifier(rawModel).raw
+    : await resolveRoutedModel(rawModel).then(() => rawModel); // validate exists, keep bare id
+
   return {
-    model: parseRoutedModelIdentifier(model).raw,
+    model,
     reasoningEffort: parseAllowedValue(
       "reasoning effort",
       value.reasoningEffort,
@@ -555,6 +613,11 @@ function flattenText(value: unknown): string {
 
 const runtime = new AgentRuntime();
 
+app.get("/api/models", async (c) => {
+  const models = await modelsConfigPromise;
+  return c.json(models);
+});
+
 app.get("/api/conversation", (c) => c.json(runtime.snapshot()));
 
 app.post("/api/messages", async (c) => {
@@ -572,7 +635,11 @@ app.post("/api/messages", async (c) => {
     }
 
     const snapshot = runtime.snapshot();
-    await runtime.enqueueUserMessage(text, snapshot.cwd, snapshot.modelSettings);
+    await runtime.enqueueUserMessage(
+      text,
+      snapshot.cwd,
+      snapshot.modelSettings,
+    );
     return c.json({ ok: true, snapshot: runtime.snapshot() });
   } catch (error) {
     return c.json({ error: stringifyError(error) }, 400);
@@ -595,7 +662,7 @@ app.post("/api/model", async (c) => {
   const body = await c.req.json().catch(() => null);
 
   try {
-    runtime.setModelSettings({
+    await runtime.setModelSettings({
       model: typeof body?.model === "string" ? body.model : undefined,
       reasoningEffort:
         typeof body?.reasoningEffort === "string"

@@ -5,7 +5,7 @@ import { ChatXAI } from "@langchain/xai";
 import type { BindToolsInput } from "@langchain/core/language_models/chat_models";
 
 export type SupportedModelProvider = "anthropic" | "openai" | "google" | "xai";
-export type ReasoningEffort = "minimal" | "low" | "medium" | "high";
+export type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
 export type Verbosity = "low" | "medium" | "high";
 
 export type ModelSettings = {
@@ -29,7 +29,9 @@ export const SUPPORTED_MODEL_PROVIDERS = [
 
 const MODEL_ROUTE_PATTERN = /^@([a-z][a-z0-9-]*)\/(.+)$/;
 
-export function parseRoutedModelIdentifier(value: string): RoutedModelIdentifier {
+export function parseRoutedModelIdentifier(
+  value: string,
+): RoutedModelIdentifier {
   const raw = value.trim();
 
   if (!raw) {
@@ -94,6 +96,9 @@ export function createRoutedAgentModel(
       return new ChatGoogleGenerativeAI({
         model: routedModel.model,
         apiKey: getRequiredApiKey("GOOGLE_API_KEY", routedModel.raw),
+        thinkingConfig: {
+          thinkingLevel: mapGoogleThinkingLevel(modelSettings.reasoningEffort),
+        },
       }).bindTools(tools as any);
 
     case "xai":
@@ -124,6 +129,21 @@ function mapAnthropicEffort(value: ReasoningEffort) {
       return "medium";
     case "high":
       return "high";
+    case "xhigh":
+      return "max";
+  }
+}
+
+function mapGoogleThinkingLevel(value: ReasoningEffort) {
+  switch (value) {
+    case "minimal":
+    case "low":
+      return "LOW";
+    case "medium":
+      return "MEDIUM";
+    case "high":
+    case "xhigh":
+      return "HIGH";
   }
 }
 

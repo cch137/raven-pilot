@@ -2,6 +2,7 @@ import type { Dirent } from "fs";
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
+import Handlebars from "handlebars";
 import { z } from "zod";
 import { stringifyError } from "../../utils/errors";
 import type { ToolkitModule } from "../types";
@@ -10,8 +11,6 @@ const SKILLS_DIR = fileURLToPath(new URL("../../skills/", import.meta.url));
 const SKILLS_PROMPT_FILEPATH = fileURLToPath(
   new URL("../../prompts/skills.md", import.meta.url),
 );
-const SKILLS_TABLE_ROWS_PLACEHOLDER = "{{SKILLS_TABLE_ROWS}}";
-
 type SkillRecord = {
   name: string;
   filepath: string;
@@ -22,7 +21,8 @@ const ViewSkillInputSchema = z.object({
 });
 
 let skillCatalogPromise: Promise<SkillRecord[]> | null = null;
-let skillsPromptTemplatePromise: Promise<string> | null = null;
+let skillsPromptTemplatePromise: Promise<Handlebars.TemplateDelegate> | null =
+  null;
 
 function codeBlock(content: string, filepath?: string) {
   let block = `\`\`\`\n${content}\n\`\`\``;
@@ -38,7 +38,9 @@ async function getSkillsPromptTemplate() {
   if (!skillsPromptTemplatePromise) {
     skillsPromptTemplatePromise = fs
       .readFile(SKILLS_PROMPT_FILEPATH, "utf-8")
-      .then((content) => content.trim());
+      .then((content) =>
+        Handlebars.compile(content.trim(), { noEscape: true }),
+      );
   }
 
   return skillsPromptTemplatePromise;
@@ -88,30 +90,22 @@ async function findSkillByName(name: string) {
 }
 
 export async function buildSkillsSystemPromptSection() {
-  const [template, skills] = await Promise.all([
+  const [template, catalog] = await Promise.all([
     getSkillsPromptTemplate(),
     getSkillCatalog(),
   ]);
-  const rows = skills.length
-    ? skills
-        .map((skill) => `| ${escapeMarkdownTableCell(skill.name)} |`)
-        .join("\n")
-    : "| — |";
+  const skills = catalog.length
+    ? catalog.map((skill) => escapeMarkdownTableCell(skill.name))
+    : ["—"];
 
-  if (!template.includes(SKILLS_TABLE_ROWS_PLACEHOLDER)) {
-    throw new Error(
-      `Missing placeholder: ${SKILLS_TABLE_ROWS_PLACEHOLDER} in ${SKILLS_PROMPT_FILEPATH}`,
-    );
-  }
-
-  return template.replace(SKILLS_TABLE_ROWS_PLACEHOLDER, rows);
+  return template({ skills });
 }
 
 export function createSkillsToolkit(): ToolkitModule {
   return {
     tools: [
       {
-        name: "view_skill",
+        name: "viewSkill",
         description:
           "Read skills/:name/SKILL.md for a specific skill. Use the exact folder name.",
         schema: ViewSkillInputSchema,
@@ -136,7 +130,7 @@ export function createSkillsToolkit(): ToolkitModule {
               skill.name,
               "SKILL.md",
             );
-            return `SKILL: ${skill.name}\n${codeBlock(raw, displayPath)}`;
+            return raw;
           } catch (error) {
             return stringifyError(error);
           }
