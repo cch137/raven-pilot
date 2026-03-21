@@ -1,13 +1,21 @@
 import { normalizeDirectoryPath } from "../utils/paths";
 import { createFilesystemToolkit } from "./filesystem/index";
-import type { ImagePart, Toolkit, ToolkitModule, ToolkitTool } from "./types";
+import { createSkillsToolkit } from "./skills/index";
+import type { ImagePart, Toolkit, ToolkitModule } from "./types";
 
 export { createFilesystemToolkit } from "./filesystem/index";
+export {
+  buildSkillsSystemPromptSection,
+  createSkillsToolkit,
+} from "./skills/index";
 export type { ImagePart, Toolkit, ToolkitModule, ToolkitTool } from "./types";
 
 export function createToolkit(cwd: string): Toolkit {
   const normalizedCwd = normalizeDirectoryPath(cwd);
-  const modules: ToolkitModule[] = [createFilesystemToolkit(normalizedCwd)];
+  const modules: ToolkitModule[] = [
+    createFilesystemToolkit(normalizedCwd),
+    createSkillsToolkit(),
+  ];
 
   return {
     cwd: normalizedCwd,

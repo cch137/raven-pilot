@@ -13,7 +13,11 @@ import { AIMessageChunk, ToolMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import dotenv from "dotenv";
 import { app, registerStaticAssets, startServers } from "./server";
-import { createToolkit, type ToolkitTool } from "./toolkits";
+import {
+  buildSkillsSystemPromptSection,
+  createToolkit,
+  type ToolkitTool,
+} from "./toolkits";
 import { stringifyError } from "./utils/errors";
 import { resolvePathFromBase } from "./utils/paths";
 
@@ -23,15 +27,15 @@ const AGENT_SYSTEM_PROMPT_URL = new URL(
   "./prompts/agent-system.md",
   import.meta.url,
 );
-let agentSystemPromptPromise: Promise<string> | null = null;
+const agentSystemPromptPromise = Promise.all([
+  fs.readFile(AGENT_SYSTEM_PROMPT_URL, "utf-8").then((content) => content.trim()),
+  buildSkillsSystemPromptSection(),
+]).then(([basePrompt, skillsSection]) => {
+  return [basePrompt, skillsSection].filter(Boolean).join("\n\n").trim();
+});
+void agentSystemPromptPromise.catch(() => {});
 
 async function getAgentSystemPrompt() {
-  if (!agentSystemPromptPromise) {
-    agentSystemPromptPromise = fs
-      .readFile(AGENT_SYSTEM_PROMPT_URL, "utf-8")
-      .then((content) => content.trim());
-  }
-
   return agentSystemPromptPromise;
 }
 
