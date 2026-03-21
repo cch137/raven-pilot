@@ -5,7 +5,6 @@ import {
   MemorySaver,
   START,
   END,
-  Messages,
 } from "@langchain/langgraph";
 import { ToolNode, toolsCondition } from "@langchain/langgraph/prebuilt";
 import { AIMessageChunk, ToolMessage } from "@langchain/core/messages";
@@ -37,6 +36,17 @@ void agentSystemPromptPromise.catch(() => {});
 
 async function getAgentSystemPrompt() {
   return agentSystemPromptPromise;
+}
+
+async function getInvocationSystemPrompt(cwd: string) {
+  const agentSystemPrompt = await getAgentSystemPrompt();
+  return [
+    agentSystemPrompt,
+    `Runtime working directory (CWD): ${cwd}`,
+    "Resolve every relative path for tool usage from this directory.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 type ConversationRole = "user" | "assistant" | "system" | "tool";
@@ -109,7 +119,6 @@ class AgentRuntime {
   private threadId = crypto.randomUUID();
   private messages: ConversationMessage[] = [];
   private queueRunning = false;
-  private threadInitialized = false;
   private CWD = process.cwd();
   private modelSettings: ModelSettings = { ...DEFAULT_MODEL_SETTINGS };
 
@@ -185,7 +194,6 @@ class AgentRuntime {
     this.processing = false;
     this.threadId = crypto.randomUUID();
     this.messages = [];
-    this.threadInitialized = false;
     this.broadcast({ type: "conversation-reset", data: this.snapshot() });
     this.addMessage("system", "message", "New conversation started.", "System");
     this.broadcast({ type: "processing", data: { processing: false } });
@@ -201,7 +209,12 @@ class AgentRuntime {
     const model = createRoutedAgentModel(modelSettings, tools);
 
     const callModel = async (state: typeof MessagesAnnotation.State) => {
-      const stream = await model.stream(state.messages);
+      const stream = await model.stream(
+        buildInvocationMessages(
+          state.messages,
+          await getInvocationSystemPrompt(cwd),
+        ),
+      );
       let full: AIMessageChunk | null = null;
       let assistantMessageId: string | null = null;
       let thinkingMessageId: string | null = null;
@@ -236,7 +249,7 @@ class AgentRuntime {
     };
 
     const specialToolHandler = (state: typeof MessagesAnnotation.State) => {
-      const messages: Messages = [];
+      const messages = [];
 
       for (const message of state.messages) {
         if (!ToolMessage.isInstance(message)) continue;
@@ -327,29 +340,14 @@ class AgentRuntime {
     cwd: string,
     modelSettings: ModelSettings,
   ) {
-    const includeAgentSystemPrompt = !this.threadInitialized;
-
     this.addMessage("user", "message", input, "User");
     this.setProcessing(true);
 
     try {
       const graph = this.getGraph(cwd, modelSettings);
-      const systemMessages = includeAgentSystemPrompt
-        ? [{ role: "system" as const, content: await getAgentSystemPrompt() }]
-        : [];
-
       const stream = await graph.stream(
         {
-          messages: [
-            ...systemMessages,
-            {
-              role: "system",
-              content:
-                `Runtime working directory (CWD): ${cwd}\n` +
-                "Resolve every relative path for tool usage from this directory.",
-            },
-            { role: "user", content: input },
-          ],
+          messages: [{ role: "user", content: input }],
         },
         {
           configurable: { thread_id: this.threadId },
@@ -363,7 +361,6 @@ class AgentRuntime {
         // consume the stream to drive incremental updates
       }
 
-      this.threadInitialized = true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.addMessage("system", "message", `Error: ${message}`, "System");
@@ -413,6 +410,24 @@ class AgentRuntime {
   private broadcast(event: StreamEvent) {
     for (const subscriber of this.subscribers) subscriber(event);
   }
+}
+
+function buildInvocationMessages(messages: unknown, systemPrompt: string) {
+  const history = Array.isArray(messages)
+    ? messages.filter((message) => !isSystemConversationMessage(message))
+    : [];
+
+  return [{ role: "system" as const, content: systemPrompt }, ...history];
+}
+
+function isSystemConversationMessage(message: unknown) {
+  if (!message || typeof message !== "object") return false;
+
+  const record = message as Record<string, unknown>;
+  const role = typeof record.role === "string" ? record.role.toLowerCase() : "";
+  const type = typeof record.type === "string" ? record.type.toLowerCase() : "";
+
+  return role === "system" || type === "system";
 }
 
 function formatToolCall(name: string, input: unknown) {
