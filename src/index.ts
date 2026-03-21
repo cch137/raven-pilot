@@ -1,5 +1,4 @@
 import fs from "fs/promises";
-import { ChatOpenAI } from "@langchain/openai";
 import {
   StateGraph,
   MessagesAnnotation,
@@ -20,6 +19,7 @@ import {
 } from "./toolkits";
 import { stringifyError } from "./utils/errors";
 import { resolvePathFromBase } from "./utils/paths";
+import { createRoutedAgentModel, parseRoutedModelIdentifier } from "./utils/model-router";
 
 dotenv.config();
 
@@ -74,7 +74,7 @@ const VERBOSITY_VALUES = [
 ] as const satisfies readonly Verbosity[];
 
 const DEFAULT_MODEL_SETTINGS: ModelSettings = {
-  model: "gpt-5.4",
+  model: "@anthropic/claude-sonnet-4-6",
   reasoningEffort: "high",
   verbosity: "low",
 };
@@ -198,15 +198,7 @@ class AgentRuntime {
 
     const toolkit = createToolkit(cwd);
     const tools = toolkit.tools.map((toolDef) => this.wrapTool(toolDef));
-    const model = new ChatOpenAI({
-      model: modelSettings.model,
-      apiKey: process.env["OPENAI_API_KEY"],
-      reasoning: {
-        effort: modelSettings.reasoningEffort,
-        summary: "detailed",
-      },
-      verbosity: modelSettings.verbosity,
-    }).bindTools(tools);
+    const model = createRoutedAgentModel(modelSettings, tools);
 
     const callModel = async (state: typeof MessagesAnnotation.State) => {
       const stream = await model.stream(state.messages);
@@ -452,7 +444,7 @@ function normalizeModelSettings(
   }
 
   return {
-    model,
+    model: parseRoutedModelIdentifier(model).raw,
     reasoningEffort: parseAllowedValue(
       "reasoning effort",
       value.reasoningEffort,

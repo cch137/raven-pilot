@@ -1,5 +1,5 @@
 const DEFAULT_MODEL_SETTINGS = {
-  model: "gpt-5.4",
+  model: "@anthropic/claude-sonnet-4-6",
   reasoningEffort: "high",
   verbosity: "low",
 };
